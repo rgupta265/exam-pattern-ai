@@ -1,6 +1,6 @@
 # ExamPattern AI — Official Blueprint-Verified AI Mock Testing Platform
 
-[![Next.js](https://img.shields.io/badge/Next.js-15.1.7-black?style=flat&logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.3-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19.0.0-blue?style=flat&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7.3-3178c6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479a1?style=flat&logo=mysql)](https://www.mysql.com/)
@@ -8,7 +8,7 @@
 [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-AI%20Engine-8e75ff?style=flat&logo=google)](https://ai.google.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4.17-38bdf8?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
 
-> **ExamPattern AI** is a production-oriented mock examination platform designed to create authentic exam-pattern simulations using verified examination documents, exam versions, blueprints, syllabus mappings, and controlled Google Gemini AI generation.
+> **ExamPattern AI** is an enterprise-grade mock examination platform designed to create authentic exam-pattern simulations using verified examination documents, exam versions, blueprints, syllabus mappings, and controlled Google Gemini AI generation.
 
 ---
 
@@ -47,11 +47,15 @@ Official Exam Documents (PDF / Advertisement)
 * **Full Examination Generation:** Assembles full official mock tests strictly enforcing exact question counts, section distribution, topic weightage, marks, negative marking, and duration.
 * **11-Point Pattern Validation Engine:** Automated pre-publication engine verifying 100% blueprint compliance, syllabus coverage, and zero duplicate questions.
 * **Candidate Attempt Audits:** Inspect full attempt transcripts, answer revision histories, question-level time spent, and scorecard evaluations.
+* **Admin Database Management:** Built-in MySQL 8 backup generator, safe testing data reset, clean data isolation, and fresh seed engine (`/[locale]/admin/database`).
 * **Audit Logging:** Immutable administrative audit trail recording user IDs, actions, resource types, IP addresses, user agents, and change diffs.
 
 ### Candidate Portal
 * **Candidate Dashboard:** Longitudinal score progress, overall accuracy, test completion rate, identified strong/weak topics, and recent scorecards.
+* **Email & OTP Authentication:** Secure candidate registration with 6-digit email OTP verification, same-screen verification flow, and forgot-password OTP reset.
+* **Multi-Step Candidate Profile Onboarding:** Multi-step profile management covering personal details, address, educational qualifications, and work experience.
 * **Full Examination Mode:** Authentic examination simulations calibrated strictly to locked blueprints (e.g., 100 questions, 120 minutes, -0.25 negative marking).
+* **Section-Wise Question Numbering:** Question numbering strictly restarts from 1 for every section (`Section A: 1..8`, `Section B: 1..5`) with multi-section interactive palettes and cross-section "Save & Next" transitions.
 * **Pre-Exam Guidelines:** Bilingual instructions acknowledgement and display language selection before entering the live examination room.
 * **Touch-Optimized Exam Room:** Mobile-first UX with server-synchronized countdown timer, interactive question palette, Mark for Review, Clear Answer, and background autosave.
 * **Refresh & Disconnection Resiliency:** Browser refreshes safely resume the in-progress attempt with exact remaining time without data loss.
@@ -65,15 +69,16 @@ Official Exam Documents (PDF / Advertisement)
 ## 3. Technology Stack & Prerequisites
 
 ### Technology Stack
-* **Framework:** Next.js 15.1.7 (App Router, React Server Components by default)
+* **Framework:** Next.js 16.3.3 (App Router, Turbopack, React Server Components by default)
+* **Edge Security & Routing:** Next.js 16 Proxy (`src/proxy.ts` convention)
 * **Language:** TypeScript 5.7.3 (Strict Mode enabled, zero implicit `any`)
 * **UI & Styling:** React 19, Tailwind CSS 3.4, Lucide React
 * **Database:** MySQL 8.0
-* **ORM:** Prisma ORM 6.4.1
+* **ORM:** Prisma ORM 6.4.1 (with modular environment variables)
 * **AI Engine:** Google Gemini API (`@google/genai` server-side abstraction)
 * **Storage:** Local Filesystem Storage (`LocalStorageProvider`)
 * **Validation:** Zod 3.24
-* **Testing:** Vitest 3.0 (Unit & Integration), Playwright 1.50 (E2E)
+* **Testing:** Vitest 3.2 (Unit & Integration), Playwright 1.50 (E2E)
 
 ### Prerequisites
 Before running ExamPattern AI locally, ensure your system has:
@@ -89,16 +94,12 @@ Before running ExamPattern AI locally, ensure your system has:
 
 ### Step 4.1: Clone the Repository
 ```bash
-git clone <repository-url>
-cd "Exam AI Mock Test"
+git clone https://github.com/rgupta265/exam-pattern-ai.git
+cd exam-pattern-ai
 ```
-*(Replace `<repository-url>` with your actual repository URL).*
 
 ### Step 4.2: Install Dependencies
 ```bash
-# Clean install matching package-lock.json
-npm ci
-# Or standard install:
 npm install
 ```
 
@@ -197,9 +198,6 @@ npx prisma studio
 > [!IMPORTANT]
 > **Admin-Only Seed Policy:** The seeding process initializes only the Super Admin account (configured via `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in `.env.local`). **Zero candidate accounts** are seeded. Candidate accounts are created exclusively through public registration (`/register`) with enforced `CANDIDATE` role isolation.
 
-> [!NOTE]
-> Use `npx prisma migrate dev` during local development. For production deployments, strictly use `npx prisma migrate deploy`.
-
 ---
 
 ## 8. Local Storage Setup
@@ -234,7 +232,7 @@ The system automatically initializes these folders on startup. Ensure the applic
 ## 10. Starting the Application
 
 ```bash
-# Start Next.js Development Server
+# Start Next.js Development Server (with Turbopack)
 npm run dev
 ```
 
@@ -303,74 +301,6 @@ The platform provides a secure, server-side Admin-only Database Management conso
 4. **Authoritative Fresh Seed Engine:** Populates initial official exam blueprints, syllabi, and sample mocks. Strictly preserves **Candidate Count = 0**.
 5. **Operation Concurrency Lock:** In-memory locking mechanism (`IDLE`, `BACKUP`, `CLEAN`, `SEED`) prevents race conditions and concurrent destructive tasks.
 
-For detailed architecture, restore commands, and security analysis, see [`docs/DATABASE_MANAGEMENT.md`](docs/DATABASE_MANAGEMENT.md).
-
----
-
-## 14. High-Level System Workflows
-
-### Administrator Exam Setup & Publishing Flow
-```
-Admin Login
-    │
-    ▼
-Create Exam & Version (/admin/exams)
-    │
-    ▼
-Upload Official Documents (/admin/notifications)
-    │
-    ▼
-Trigger Gemini AI Extraction & Admin Verification
-    │
-    ▼
-Configure Syllabus Hierarchy (/admin/exams/[id]/syllabus)
-    │
-    ▼
-Define & Lock Exam Blueprint (/admin/blueprints)
-    │
-    ▼
-Generate AI Question Bank (/admin/questions)
-    │
-    ▼
-Generate Full Examination Mock (/admin/mock-tests)
-    │
-    ▼
-11-Point Pattern Validation Engine Pass
-    │
-    ▼
-Publish Mock Test & Monitor Candidate Attempts
-```
-
-### Candidate Examination & Practice Flow
-```
-Candidate Login (/login)
-    │
-    ▼
-Candidate Dashboard (/candidate/dashboard)
-    │
-    ▼
-Select Mock Test (/candidate/mock-tests)
-    │
-    ▼
-Read Bilingual Instructions (/candidate/attempts/[id]/instructions)
-    │
-    ▼
-Live Touch Exam Room (/candidate/attempts/[id])
-    │
-    ├─► Server-Authoritative Countdown Timer
-    ├─► Real-Time Answer Autosave
-    └─► Resilient Resume on Browser Refresh
-    │
-    ▼
-Submit Examination
-    │
-    ▼
-View Instant Scorecard & Explanations (/candidate/results/[id])
-    │
-    ├─► Retake Same Exam (Attempt 2, Attempt 3...)
-    └─► Create Custom AI Practice Drill from Notes (/candidate/practice)
-```
-
 ---
 
 ## 14. Command Reference Table
@@ -379,55 +309,22 @@ All scripts defined in `package.json`:
 
 | Command | Action |
 |---|---|
-| `npm run dev` | Starts the Next.js local development server at `http://localhost:3000` |
-| `npm run build` | Compiles and builds the production-optimized Next.js application |
+| `npm run dev` | Starts the Next.js local development server with Turbopack at `http://localhost:3000` |
+| `npm run build` | Compiles and builds the production-optimized Next.js 16 application |
 | `npm run start` | Starts the Next.js production server from `.next` build output |
-| `npm run lint` | Runs ESLint across all TypeScript and React files |
-| `npm run typecheck` | Executes TypeScript type checking (`tsc --noEmit`) without emitting files |
+| `npm run lint` | Runs ESLint 9 across all TypeScript and React files with 0 warnings |
+| `npm run typecheck` | Executes TypeScript type checking (`tsc --noEmit`) in strict mode |
 | `npm run check-translations` | Validates 100% parity across `messages/en.json` and `messages/hi.json` |
-| `npm run test` | Runs the full Vitest unit and integration test suite |
+| `npm run test` | Runs the full Vitest unit and integration test suite (207+ tests) |
 | `npm run test:watch` | Starts Vitest in interactive watch mode for TDD |
 | `npm run test:e2e` | Runs Playwright end-to-end browser tests |
-| `npm run prisma:generate` | Generates the Prisma Client TypeScript artifacts |
+| `npm run prisma:generate` | Generates the Prisma Client TypeScript artifacts with modular DB config |
 | `npm run prisma:migrate` | Runs Prisma schema migrations in development mode |
 | `npm run prisma:seed` | Executes database seeding script (`prisma/seed.ts`) |
 
 ---
 
-## 15. Troubleshooting Guide
-
-| # | Symptom | Possible Cause | Solution |
-|---|---|---|---|
-| 1 | `Can't reach database server at 127.0.0.1:3306` | MySQL service is stopped or port is blocked | Start MySQL service (`net start MySQL80` on Windows or `sudo systemctl start mysql` on Linux). Verify credentials in `DATABASE_URL`. |
-| 2 | `PrismaClientInitializationError` | Prisma Client not generated after schema changes | Run `npm run prisma:generate`. |
-| 3 | `Translation parity check FAILED` | A translation key was added to `en.json` but missing in `hi.json` | Run `npm run check-translations` to identify the missing key, then update `messages/hi.json`. |
-| 4 | `401 Unauthorized` on AI generation | `GEMINI_API_KEY` missing or invalid | Check `.env.local` for a valid `GEMINI_API_KEY`. Verify the key has Gemini API access enabled in Google AI Studio. |
-| 5 | `EADDRINUSE: port 3000 already in use` | Another process is occupying port 3000 | Stop the existing process or run on another port: `npx next dev -p 3001`. |
-| 6 | `Type error: Property does not exist on type` | TypeScript types out of sync with Prisma models | Run `npm run prisma:generate` followed by `npm run typecheck`. |
-| 7 | `File upload error: ENOENT storage/private` | Storage directory missing or lacking permissions | The app automatically creates storage directories. Ensure user has write permissions to `./storage`. |
-| 8 | `Next.js build fails on missing locale` | Route accessed without valid locale parameter | Access routes through canonical locale paths (`/en/...` or `/hi/...`). |
-| 9 | `Maximum attempt limit reached` | Candidate has completed max attempts (10) for this mock | Expected security behavior. Candidate can create a new practice drill or admin can configure attempt limits. |
-| 10 | `JWT expired / Invalid session token` | Session cookie expired | Clear cookies and log in again. Adjust `AUTH_EXPIRES_IN` in `.env.local` if needed. |
-| 11 | `Failed to extract URL content (SSRF blocked)` | URL input matches private IP / localhost range | Security guard: Only public `http://` and `https://` educational domains are allowed. |
-| 12 | `Cannot modify locked blueprint` | Attempting to edit a blueprint with status `LOCKED` | Create a new distinct Exam Version or Corrigendum. Locked blueprints are immutable by design. |
-
----
-
-## 16. Development Database Reset Guide
-
-If you need to reset your local development database to a clean initial state:
-
-```bash
-# WARNING: This completely wipes local database data and re-applies all migrations.
-npx prisma migrate reset
-```
-
-> [!CAUTION]
-> **NEVER** run `prisma migrate reset` in staging or production environments. Use only on local development machines.
-
----
-
-## 17. GitHub Contribution Workflow
+## 15. GitHub Contribution Workflow
 
 1. Create a feature branch from `main`:
    ```bash
@@ -450,62 +347,7 @@ npx prisma migrate reset
 
 ---
 
-## 18. Project Directory Structure
-
-```
-Exam AI Mock Test/
-├── AGENTS.md                   # Single source of truth & architectural rules
-├── README.md                   # Primary developer guide & onboarding manual
-├── package.json                # Project dependencies and script commands
-├── prisma/
-│   ├── schema.prisma           # MySQL 8 database models & relations
-│   └── seed.ts                 # Initial database seeding script
-├── messages/
-│   ├── en.json                 # English translation dictionary
-│   └── hi.json                 # Hindi translation dictionary
-├── docs/
-│   ├── ADMIN_APPLICATION_TOUR.html             # Standalone Admin HTML Tour
-│   ├── CANDIDATE_APPLICATION_TOUR.html         # Standalone Candidate HTML Tour
-│   ├── ADMIN_APPLICATION_TOUR_VIDEO_SCRIPT.md   # Admin Video Storyboard Script
-│   └── CANDIDATE_APPLICATION_TOUR_VIDEO_SCRIPT.md # Candidate Video Storyboard Script
-├── storage/                    # Local filesystem storage abstraction
-│   ├── private/
-│   │   ├── notifications/      # Uploaded official PDF notices
-│   │   └── candidate-documents/# Candidate practice notes & files
-│   └── public/
-├── src/
-│   ├── app/                    # Next.js App Router ([locale] & API routes)
-│   │   ├── [locale]/           # Localized route trees
-│   │   │   ├── admin/          # Administrator Console pages
-│   │   │   └── candidate/      # Candidate Portal pages
-│   │   ├── api/                # Server API endpoints
-│   │   ├── layout.tsx          # Root HTML layout with LoadingProvider
-│   │   └── globals.css         # Global Tailwind styles
-│   ├── components/             # Reusable presentation components
-│   │   ├── common/             # Language switcher, Global loader
-│   │   ├── layouts/            # Sidebar, Nav, Headers
-│   │   └── ui/                 # Accessible button, card, badge primitives
-│   ├── lib/                    # Core utilities (Prisma, Auth, i18n, errors)
-│   ├── modules/                # Domain schemas (Zod)
-│   ├── services/               # Modular monolithic domain services
-│   │   ├── ai/                 # Gemini question & document extraction
-│   │   ├── attempt/            # Attempt lifecycle & timer synchronization
-│   │   ├── mock/               # Mock generation & validation engine
-│   │   ├── practice/           # Dynamic practice drills from resources
-│   │   ├── rbac/               # Role-based access control
-│   │   └── result/             # Scoring calculation engine
-│   └── types/                  # Shared TypeScript interfaces
-├── tests/
-│   ├── unit/                   # Vitest unit test suites
-│   ├── integration/            # Vitest integration test suites
-│   └── e2e/                    # Playwright end-to-end test suites
-└── scripts/
-    └── check-translations.ts   # Automated translation parity checker
-```
-
----
-
-## 19. Security Guidelines
+## 16. Security Guidelines
 
 * **Server-Side AI Abstraction:** All Google Gemini API interactions execute exclusively on the server. Never expose API keys to the browser.
 * **Role-Based Access Control:** Every API endpoint and server action validates session identity and granular permissions (`EXAM_CREATE`, `BLUEPRINT_LOCK`, `MOCK_PUBLISH`, etc.).
@@ -514,6 +356,6 @@ Exam AI Mock Test/
 
 ---
 
-## 20. License & Copyright
+## 17. License & Copyright
 
-© 2026 **ExamPattern AI**. Built with Next.js App Router, MySQL 8, Prisma ORM, and Google Gemini AI. All Rights Reserved.
+© 2026 **ExamPattern AI**. Built with Next.js 16 App Router, MySQL 8, Prisma ORM, and Google Gemini AI. All Rights Reserved.
