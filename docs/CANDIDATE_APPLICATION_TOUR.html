@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExamPattern AI — Candidate Application Tour & Practice Guide</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #eff6ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --emerald-600: #059669;
+      --emerald-50: #ecfdf5;
+      --amber-600: #d97706;
+      --amber-50: #fffbeb;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--slate-50);
+      color: var(--slate-800);
+      line-height: 1.6;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--slate-200);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0.875rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-weight: 800;
+      font-size: 1.125rem;
+      color: var(--slate-900);
+    }
+    .brand-badge {
+      background: var(--primary);
+      color: white;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.375rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .lang-switcher {
+      display: flex;
+      gap: 0.375rem;
+      background: var(--slate-100);
+      padding: 0.25rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--slate-200);
+    }
+    .lang-btn {
+      background: transparent;
+      border: none;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.375rem;
+      font-size: 0.8125rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--slate-600);
+      transition: all 0.15s ease;
+    }
+    .lang-btn.active {
+      background: white;
+      color: var(--primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 2rem;
+    }
+    @media (max-width: 860px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        display: none;
+      }
+    }
+    .sidebar {
+      position: sticky;
+      top: 5rem;
+      height: calc(100vh - 6rem);
+      overflow-y: auto;
+      background: white;
+      border: 1px solid var(--slate-200);
+      border-radius: 1rem;
+      padding: 1.25rem;
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate-600);
+      margin-bottom: 0.75rem;
+      font-weight: 800;
+    }
+    .toc-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+    .toc-link {
+      display: block;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--slate-700);
+      text-decoration: none;
+      border-radius: 0.5rem;
+      transition: all 0.15s ease;
+    }
+    .toc-link:hover {
+      background: var(--slate-100);
+      color: var(--primary);
+    }
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .hero-card {
+      background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+      color: white;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .hero-card h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      line-height: 1.2;
+    }
+    .hero-card p {
+      font-size: 0.9375rem;
+      opacity: 0.9;
+      max-width: 700px;
+    }
+    .step-card {
+      background: white;
+      border: 1px solid var(--slate-200);
+      border-radius: 1rem;
+      padding: 1.75rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      scroll-margin-top: 5rem;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--slate-100);
+      padding-bottom: 0.875rem;
+      flex-wrap: wrap;
+    }
+    .step-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--slate-900);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+    .step-number {
+      background: var(--primary-light);
+      color: var(--primary);
+      width: 2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 800;
+    }
+    .route-badge {
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: var(--slate-100);
+      padding: 0.25rem 0.625rem;
+      border-radius: 0.375rem;
+      color: var(--slate-700);
+      font-weight: 700;
+    }
+    .callout {
+      padding: 1rem 1.25rem;
+      border-radius: 0.75rem;
+      margin: 1rem 0;
+      font-size: 0.875rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .callout-tip {
+      background: var(--emerald-50);
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+    .callout-warning {
+      background: var(--amber-50);
+      border: 1px solid #fde68a;
+      color: #92400e;
+    }
+    .callout-title {
+      font-weight: 800;
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .step-instructions {
+      margin: 1rem 0;
+      padding-left: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-size: 0.9375rem;
+    }
+    .expected-result {
+      margin-top: 1rem;
+      padding: 0.875rem;
+      background: var(--slate-50);
+      border-radius: 0.5rem;
+      border-left: 3px solid var(--primary);
+      font-size: 0.875rem;
+    }
+    footer {
+      background: white;
+      border-top: 1px solid var(--slate-200);
+      padding: 2rem;
+      text-align: center;
+      font-size: 0.8125rem;
+      color: var(--slate-600);
+      margin-top: 3rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>ExamPattern AI</span>
+      <span class="brand-badge">Candidate Tour</span>
+    </div>
+    <div class="lang-switcher">
+      <button class="lang-btn active" id="btn-en" onclick="setLanguage('en')">English</button>
+      <button class="lang-btn" id="btn-hi" onclick="setLanguage('hi')">हिन्दी</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <aside class="sidebar">
+      <h4 class="t-toc">Table of Contents</h4>
+      <ul class="toc-list">
+        <li><a href="#section-cand-dashboard" class="toc-link">1. Candidate Dashboard</a></li>
+        <li><a href="#section-cand-exams" class="toc-link">2. Explore Verified Exams</a></li>
+        <li><a href="#section-cand-mocks" class="toc-link">3. Full Examination Mocks</a></li>
+        <li><a href="#section-cand-instructions" class="toc-link">4. Instructions & Language</a></li>
+        <li><a href="#section-cand-exam" class="toc-link">5. Live Exam Interface</a></li>
+        <li><a href="#section-cand-results" class="toc-link">6. Results & Scorecards</a></li>
+        <li><a href="#section-cand-retake" class="toc-link">7. Multiple Retakes</a></li>
+        <li><a href="#section-cand-practice" class="toc-link">8. AI Practice Drills</a></li>
+        <li><a href="#section-cand-resources" class="toc-link">9. Ingesting PDF/DOCX/URL</a></li>
+      </ul>
+    </aside>
+
+    <main class="main-content">
+      <div class="hero-card">
+        <h1 id="hero-title">Candidate Application Tour & Practice Guide</h1>
+        <p id="hero-desc">
+          Step-by-step candidate guide for authentic blueprint-verified examination simulations, mobile exam-taking UX, multiple retakes, and custom AI practice drills.
+        </p>
+      </div>
+
+      <!-- Step 1 -->
+      <section id="section-cand-dashboard" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">1</span>
+            <span id="title-1">Candidate Dashboard</span>
+          </div>
+          <span class="route-badge">/[locale]/candidate/dashboard</span>
+        </div>
+        <p id="desc-1">
+          Review your attempted tests, accuracy rate, longitudinal score trends, identified strong/weak topics, and recent examination scorecards.
+        </p>
+        <div class="callout callout-tip">
+          <span class="callout-title" id="tip-title-1">Quick Action</span>
+          <span id="tip-desc-1">Launch available mock tests or targeted practice drills directly from the dashboard hero cards.</span>
+        </div>
+      </section>
+
+      <!-- Step 2 -->
+      <section id="section-cand-exams" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">2</span>
+            <span id="title-2">Explore Verified Target Exams</span>
+          </div>
+          <span class="route-badge">/[locale]/candidate/exams</span>
+        </div>
+        <p id="desc-2">
+          Discover target competitive examinations by category, conducting authority, post, and notification cycle. View verified syllabus topics and blueprint breakdown.
+        </p>
+      </section>
+
+      <!-- Step 3 -->
+      <section id="section-cand-mocks" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">3</span>
+            <span id="title-3">Full Examination Mode vs Topic Practice</span>
+          </div>
+          <span class="route-badge">/[locale]/candidate/mock-tests</span>
+        </div>
+        <ol class="step-instructions">
+          <li id="mock-step-1">Select <strong>Full Examination</strong> for authentic official simulations.</li>
+          <li id="mock-step-2">Inspect Mock ID, exact question count (e.g. 100 Qs), duration (e.g. 120m), marks, and negative marking (-0.25).</li>
+          <li id="mock-step-3">Click <strong>Start Test</strong> or <strong>Resume Test</strong>.</li>
+        </ol>
+      </section>
+
+      <!-- Step 4 -->
+      <section id="section-cand-instructions" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">4</span>
+            <span id="title-4">Pre-Exam Instructions & Language Choice</span>
+          </div>
+          <span class="route-badge">/[locale]/candidate/attempts/[id]/instructions</span>
+        </div>
+        <p id="desc-4">
+          Read official rules and select your primary question display language (English or Hindi). Check the acknowledgement box and click <strong>I am ready to begin</strong>.
+        </p>
+      </section>
+
+      <!-- Step 5 -->
+      <section id="section-cand-exam" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">5</span>
+            <span id="title-5">Live Touch Examination Interface</span>
+          </div>
+          <span class="route-badge">/[locale]/candidate/attempts/[id]</span>
+        </div>
+        <p id="desc-5">
+          Experience mobile-first touch navigation:
+        </p>
+        <ul class="step-instructions">
+          <li id="ex-feat-1"><strong>Server-Authoritative Timer:</strong> Synchronized with server clock; auto-submits on expiration.</li>
+          <li id="ex-feat-2"><strong>Interactive Question Palette:</strong> Easily jump between sections and marked questions.</li>
+          <li id="ex-feat-3"><strong>Real-Time Autosave:</strong> Every answer selection is instantly persisted.</li>
+          <li id="ex-feat-4"><strong>Refresh Resiliency:</strong> Reopening the browser safely resumes your ongoing attempt with exact remaining time.</li>
+        </ul>
+      </section>
+
+      <!-- Step 6 -->
+      <section id="section-cand-results" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">6</span>
+            <span id="title-6">Scorecard, Answers & Time Analysis</span>
+          </div>
+          <span class="route-badge">/[locale]/candidate/results/[id]</span>
+        </div>
+        <p id="desc-6">
+          View net marks, percentage, correct/incorrect counts, time spent per question, and step-by-step solution explanations.
+        </p>
+      </section>
+
+      <!-- Step 7 -->
+      <section id="section-cand-retake" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">7</span>
+            <span id="title-7">Retake Support (Same Examination)</span>
+          </div>
+          <span class="route-badge">Multi-Attempt Support</span>
+        </div>
+        <p id="desc-7">
+          Retaking an official mock reuses the exact same question set and locked blueprint rules, creating an incremental attempt (Attempt 2, 3...) to measure your improvement over time.
+        </p>
+      </section>
+
+      <!-- Step 8 -->
+      <section id="section-cand-practice" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">8</span>
+            <span id="title-8">Custom AI Practice Drills</span>
+          </div>
+          <span class="route-badge">/[locale]/candidate/practice/create</span>
+        </div>
+        <p id="desc-8">
+          Generate targeted dynamic practice drills separate from official mocks using verified syllabus topics or your own notes.
+        </p>
+      </section>
+
+      <!-- Step 9 -->
+      <section id="section-cand-resources" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">9</span>
+            <span id="title-9">Ingesting PDF, DOCX, Images, Text & URLs</span>
+          </div>
+          <span class="route-badge">Resource Ingestion</span>
+        </div>
+        <p id="desc-9">
+          Upload reference PDF chapters, Word documents, book photos, paste revision notes, or input safe educational URLs. Gemini AI generates focused MCQs strictly bounded to your source material.
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <p>© 2026 ExamPattern AI — Candidate Examination & Practice Portal. All Rights Reserved.</p>
+  </footer>
+
+  <script>
+    const translations = {
+      en: {
+        heroTitle: "Candidate Application Tour & Practice Guide",
+        heroDesc: "Step-by-step candidate guide for authentic blueprint-verified examination simulations, mobile exam-taking UX, multiple retakes, and custom AI practice drills.",
+        title1: "1. Candidate Dashboard",
+        desc1: "Review your attempted tests, accuracy rate, longitudinal score trends, identified strong/weak topics, and recent examination scorecards.",
+        tipTitle1: "Quick Action",
+        tipDesc1: "Launch available mock tests or targeted practice drills directly from the dashboard hero cards.",
+        title2: "2. Explore Verified Target Exams",
+        desc2: "Discover target competitive examinations by category, conducting authority, post, and notification cycle. View verified syllabus topics and blueprint breakdown.",
+        title3: "3. Full Examination Mode vs Topic Practice",
+        mockStep1: "Select Full Examination for authentic official simulations.",
+        mockStep2: "Inspect Mock ID, exact question count (e.g. 100 Qs), duration (e.g. 120m), marks, and negative marking (-0.25).",
+        mockStep3: "Click Start Test or Resume Test.",
+        title4: "4. Pre-Exam Instructions & Language Choice",
+        desc4: "Read official rules and select your primary question display language (English or Hindi). Check the acknowledgement box and click I am ready to begin.",
+        title5: "5. Live Touch Examination Interface",
+        desc5: "Experience mobile-first touch navigation:",
+        exFeat1: "Server-Authoritative Timer: Synchronized with server clock; auto-submits on expiration.",
+        exFeat2: "Interactive Question Palette: Easily jump between sections and marked questions.",
+        exFeat3: "Real-Time Autosave: Every answer selection is instantly persisted.",
+        exFeat4: "Refresh Resiliency: Reopening the browser safely resumes your ongoing attempt with exact remaining time.",
+        title6: "6. Scorecard, Answers & Time Analysis",
+        desc6: "View net marks, percentage, correct/incorrect counts, time spent per question, and step-by-step solution explanations.",
+        title7: "7. Retake Support (Same Examination)",
+        desc7: "Retaking an official mock reuses the exact same question set and locked blueprint rules, creating an incremental attempt (Attempt 2, 3...) to measure your improvement over time.",
+        title8: "8. Custom AI Practice Drills",
+        desc8: "Generate targeted dynamic practice drills separate from official mocks using verified syllabus topics or your own notes.",
+        title9: "9. Ingesting PDF, DOCX, Images, Text & URLs",
+        desc9: "Upload reference PDF chapters, Word documents, book photos, paste revision notes, or input safe educational URLs. Gemini AI generates focused MCQs strictly bounded to your source material."
+      },
+      hi: {
+        heroTitle: "अभ्यर्थी एप्लिकेशन टूर एवं अभ्यास मार्गदर्शिका",
+        heroDesc: "ब्लूप्रिंट-सत्यापित परीक्षा सिमुलेशन, मोबाइल परीक्षा इंटरफेस, बहु-प्रयास रीटेक और एआई प्रैक्टिस ड्रिल्स के लिए चरण-दर-चरण मार्गदर्शिका।",
+        title1: "1. अभ्यर्थी डैशबोर्ड",
+        desc1: "अपने हल किए गए टेस्ट, सटीकता दर, समय के साथ अंकों के रुझान, मजबूत/कमजोर विषय और हालिया स्कोरकार्ड देखें।",
+        tipTitle1: "त्वरित कार्रवाई",
+        tipDesc1: "डैशबोर्ड से सीधे उपलब्ध मॉक टेस्ट या लक्षित प्रैक्टिस ड्रिल्स शुरू करें।",
+        title2: "2. सत्यापित लक्षित परीक्षाएं ब्राउज़ करें",
+        desc2: "श्रेणी, संचालन संस्था, पद और अधिसूचना वर्ष के अनुसार प्रतियोगी परीक्षाएं खोजें। सत्यापित पाठ्यक्रम और ब्लूप्रिंट देखें।",
+        title3: "3. फुल परीक्षा मोड बनाम टॉपिक प्रैक्टिस",
+        mockStep1: "आधिकारिक सिमुलेशन के लिए Full Examination चुनें।",
+        mockStep2: "मॉक आईडी, सटीक प्रश्नों की संख्या (उदा. 100), अवधि (उदा. 120 मिनट), अंक और नकारात्मक अंकन (-0.25) का निरीक्षण करें।",
+        mockStep3: "Start Test या Resume Test पर क्लिक करें।",
+        title4: "4. परीक्षा पूर्व निर्देश एवं भाषा चयन",
+        desc4: "आधिकारिक नियमों को पढ़ें और अपनी प्राथमिक प्रश्न प्रदर्शन भाषा (अंग्रेजी या हिंदी) चुनें। स्वीकृति बॉक्स पर टिक करें और शुरू करें।",
+        title5: "5. लाइव टच परीक्षा इंटरफ़ेस",
+        desc5: "मोबाइल-प्रथम टच नेविगेशन का अनुभव करें:",
+        exFeat1: "सर्वर-प्राधिकृत टाइमर: सर्वर घड़ी के साथ समन्वयित; समय समाप्त होने पर स्वतः सबमिट।",
+        exFeat2: "इंटरैक्टिव प्रश्न पैलेट: खंडों और समीक्षा के लिए चिह्नित प्रश्नों के बीच आसानी से नेविगेट करें।",
+        exFeat3: "रीयल-टाइम ऑटोसेव: प्रत्येक उत्तर चयन तुरंत सर्वर पर सुरक्षित होता है।",
+        exFeat4: "रीफ्रेश सुरक्षा: ब्राउज़र दोबारा खोलने पर शेष समय के साथ परीक्षा सुरक्षित रूप से फिर से शुरू होती है।",
+        title6: "6. स्कोरकार्ड, उत्तर और समय विश्लेषण",
+        desc6: "प्राप्तांक, प्रतिशत, सही/गलत गणना, प्रति प्रश्न बिताया गया समय और विस्तृत समाधान देखें।",
+        title7: "7. पुनः परीक्षा समर्थन (Retake Examination)",
+        desc7: "आधिकारिक मॉक को दोबारा हल करने पर वही प्रश्न सेट और ब्लूप्रिंट नियम उपयोग होते हैं, जो सुधार को मापने के लिए एक नया प्रयास (Attempt 2, 3...) बनाते हैं।",
+        title8: "8. कस्टम एआई प्रैक्टिस ड्रिल्स",
+        desc8: "सत्यापित पाठ्यक्रम विषयों या अपने नोट्स का उपयोग करके आधिकारिक मॉक से अलग लक्षित अभ्यास ड्रिल तैयार करें।",
+        title9: "9. पीडीएफ, डॉक्स, छवियां, टेक्स्ट और यूआरएल जोड़ना",
+        desc9: "पीडीएफ अध्याय, वर्ड दस्तावेज़, पुस्तकों की तस्वीरें अपलोड करें, नोट्स पेस्ट करें या सुरक्षित यूआरएल दर्ज करें। जेमिनी एआई आपकी सामग्री से संबंधित प्रश्न तैयार करता है।"
+      }
+    };
+
+    function setLanguage(lang) {
+      document.getElementById("btn-en").classList.toggle("active", lang === "en");
+      document.getElementById("btn-hi").classList.toggle("active", lang === "hi");
+      const dict = translations[lang];
+
+      document.getElementById("hero-title").innerText = dict.heroTitle;
+      document.getElementById("hero-desc").innerText = dict.heroDesc;
+      document.getElementById("title-1").innerText = dict.title1;
+      document.getElementById("desc-1").innerText = dict.desc1;
+      document.getElementById("tip-title-1").innerText = dict.tipTitle1;
+      document.getElementById("tip-desc-1").innerText = dict.tipDesc1;
+      document.getElementById("title-2").innerText = dict.title2;
+      document.getElementById("desc-2").innerText = dict.desc2;
+      document.getElementById("title-3").innerText = dict.title3;
+      document.getElementById("mock-step-1").innerText = dict.mockStep1;
+      document.getElementById("mock-step-2").innerText = dict.mockStep2;
+      document.getElementById("mock-step-3").innerText = dict.mockStep3;
+      document.getElementById("title-4").innerText = dict.title4;
+      document.getElementById("desc-4").innerText = dict.desc4;
+      document.getElementById("title-5").innerText = dict.title5;
+      document.getElementById("desc-5").innerText = dict.desc5;
+      document.getElementById("ex-feat-1").innerText = dict.exFeat1;
+      document.getElementById("ex-feat-2").innerText = dict.exFeat2;
+      document.getElementById("ex-feat-3").innerText = dict.exFeat3;
+      document.getElementById("ex-feat-4").innerText = dict.exFeat4;
+      document.getElementById("title-6").innerText = dict.title6;
+      document.getElementById("desc-6").innerText = dict.desc6;
+      document.getElementById("title-7").innerText = dict.title7;
+      document.getElementById("desc-7").innerText = dict.desc7;
+      document.getElementById("title-8").innerText = dict.title8;
+      document.getElementById("desc-8").innerText = dict.desc8;
+      document.getElementById("title-9").innerText = dict.title9;
+      document.getElementById("desc-9").innerText = dict.desc9;
+    }
+  </script>
+</body>
+</html>

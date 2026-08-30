@@ -1,0 +1,1441 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// 1. AUTH & RBAC MODELS
+// ==========================================
+
+enum UserRoleType {
+  SUPER_ADMIN
+  ADMIN
+  QUESTION_REVIEWER
+  CANDIDATE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id               String      @id @default(uuid()) @db.VarChar(36)
+  email            String      @unique @db.VarChar(191)
+  passwordHash     String      @map("password_hash") @db.VarChar(255)
+  fullName         String      @map("full_name") @db.VarChar(191)
+  phoneNumber      String?     @map("phone_number") @db.VarChar(50)
+  avatarUrl        String?     @map("avatar_url") @db.VarChar(255)
+  preferredLocale  String      @default("en") @map("preferred_locale") @db.VarChar(10)
+  status           UserStatus  @default(ACTIVE)
+  emailVerifiedAt  DateTime?   @map("email_verified_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  deletedAt        DateTime?   @map("deleted_at")
+
+  // Relations
+  userRoles        UserRole[]
+  candidateProfile CandidateProfile?
+  emailVerifications EmailVerification[]
+  passwordResetOtps  PasswordResetOTP[]
+  auditLogs        AuditLog[]
+  testAttempts     TestAttempt[]
+  examStats        CandidateExamStatistic[]
+  topicStats       CandidateTopicStatistic[]
+  questionReviews  QuestionReview[]
+  uploadedDocs     ExamDocument[]            @relation("DocumentUploader")
+  verifiedDocs     ExamDocument[]            @relation("DocumentVerifier")
+  verifiedBlueprints ExamBlueprint[]         @relation("BlueprintVerifier")
+  lockedBlueprints   ExamBlueprint[]         @relation("BlueprintLocker")
+  verifiedSyllabi    Syllabus[]              @relation("SyllabusVerifier")
+  createdMockTests   MockTest[]              @relation("MockTestCreator")
+  practiceResources  PracticeResource[]
+  practiceTests      PracticeTest[]
+  practiceAttempts   PracticeAttempt[]
+  tourVideos         ApplicationTourVideo[]    @relation("TourVideoCreator")
+  databaseBackups    DatabaseBackup[]          @relation("BackupCreator")
+
+  @@index([email])
+  @@index([status])
+  @@map("users")
+}
+
+model Role {
+  id              String           @id @default(uuid()) @db.VarChar(36)
+  name            String           @unique @db.VarChar(100)
+  code            UserRoleType     @unique
+  description     String?          @db.VarChar(255)
+  isSystem        Boolean          @default(true) @map("is_system")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(uuid()) @db.VarChar(36)
+  code            String           @unique @db.VarChar(100)
+  name            String           @db.VarChar(150)
+  module          String           @db.VarChar(100)
+  description     String?          @db.VarChar(255)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  userId    String   @map("user_id") @db.VarChar(36)
+  roleId    String   @map("role_id") @db.VarChar(36)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid()) @db.VarChar(36)
+  roleId       String     @map("role_id") @db.VarChar(36)
+  permissionId String     @map("permission_id") @db.VarChar(36)
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+// ==========================================
+// 2. EXAM & BLUEPRINT HIERARCHY
+// ==========================================
+
+model ExamCategory {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  name        String    @unique @db.VarChar(150)
+  slug        String    @unique @db.VarChar(150)
+  description String?   @db.Text
+  icon        String?   @db.VarChar(100)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  exams       Exam[]
+
+  @@map("exam_categories")
+}
+
+model Exam {
+  id          String        @id @default(uuid()) @db.VarChar(36)
+  categoryId  String        @map("category_id") @db.VarChar(36)
+  name        String        @db.VarChar(191)
+  slug        String        @unique @db.VarChar(150)
+  code        String        @unique @db.VarChar(50)
+  authority   String        @db.VarChar(191)
+  postName    String        @map("post_name") @db.VarChar(191)
+  description String?       @db.Text
+  isFeatured  Boolean       @default(false) @map("is_featured")
+  isActive    Boolean       @default(true) @map("is_active")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  deletedAt   DateTime?     @map("deleted_at")
+
+  category    ExamCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  versions    ExamVersion[]
+
+  @@index([categoryId])
+  @@index([authority])
+  @@index([postName])
+  @@index([isActive])
+  @@index([isFeatured])
+  @@map("exams")
+}
+
+enum ExamVersionStatus {
+  DRAFT
+  PROCESSING
+  UNDER_REVIEW
+  VERIFIED
+  ACTIVE
+  ARCHIVED
+}
+
+model ExamVersion {
+  id          String            @id @default(uuid()) @db.VarChar(36)
+  examId      String            @map("exam_id") @db.VarChar(36)
+  year        Int
+  versionName String            @map("version_name") @db.VarChar(100) // e.g., "2026 Regular", "Corrigendum-1"
+  notificationNumber String?    @map("notification_number") @db.VarChar(100)
+  status      ExamVersionStatus @default(DRAFT)
+  isActive    Boolean           @default(true) @map("is_active")
+  effectiveDate DateTime?       @map("effective_date")
+  description String?           @db.Text
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  deletedAt   DateTime?         @map("deleted_at")
+
+  exam        Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  documents   ExamDocument[]
+  documentRequirements ExamDocumentRequirement[]
+  blueprints  ExamBlueprint[]
+  syllabi     Syllabus[]
+  mockTests   MockTest[]
+  stats       CandidateExamStatistic[]
+  generationRequests MockGenerationRequest[]
+  practiceTests PracticeTest[]
+
+  @@unique([examId, versionName, year])
+  @@index([examId])
+  @@index([status])
+  @@map("exam_versions")
+}
+
+enum DocumentType {
+  OFFICIAL_NOTIFICATION
+  ADVERTISEMENT
+  DETAILED_NOTIFICATION
+  SYLLABUS
+  EXAM_PATTERN
+  BLUEPRINT
+  INSTRUCTIONS
+  PREVIOUS_YEAR_PAPER
+  ANSWER_KEY
+  AMENDMENT
+  CORRIGENDUM
+  ELIGIBILITY
+  SYLLABUS_DOCUMENT
+  REFERENCE_MATERIAL
+  NOTIFICATION
+  OTHER
+}
+
+enum DocumentClassification {
+  REQUIRED
+  OPTIONAL
+  REFERENCE
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  EXTRACTED
+  VERIFIED
+  REJECTED
+  ARCHIVED
+  FAILED
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ExamDocument {
+  id           String                  @id @default(uuid()) @db.VarChar(36)
+  examVersionId String                 @map("exam_version_id") @db.VarChar(36)
+  fileId       String                  @map("file_id") @db.VarChar(36)
+  documentType DocumentType            @default(NOTIFICATION) @map("document_type")
+  documentCategory String?             @map("document_category") @db.VarChar(100)
+  classification DocumentClassification @default(REQUIRED)
+  status       DocumentStatus          @default(UPLOADED)
+  title        String                  @db.VarChar(191)
+  advertisementNumber String?          @map("advertisement_number") @db.VarChar(100)
+  issueDate    DateTime?               @map("issue_date")
+  sourceAuthority String?              @map("source_authority") @db.VarChar(191)
+  extractedText String?                @map("extracted_text") @db.LongText
+  verificationNotes String?            @map("verification_notes") @db.Text
+  verifiedById String?                 @map("verified_by_id") @db.VarChar(36)
+  verifiedAt   DateTime?               @map("verified_at")
+  uploadedById String                  @map("uploaded_by_id") @db.VarChar(36)
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+
+  examVersion  ExamVersion             @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+  file         File                    @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  uploadedBy   User                    @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  verifiedBy   User?                   @relation("DocumentVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  jobs         DocumentProcessingJob[]
+
+  @@index([examVersionId])
+  @@index([fileId])
+  @@index([documentType])
+  @@index([status])
+  @@map("exam_documents")
+}
+
+model ExamDocumentRequirement {
+  id            String                 @id @default(uuid()) @db.VarChar(36)
+  examVersionId String                 @map("exam_version_id") @db.VarChar(36)
+  documentType  DocumentType           @map("document_type")
+  classification DocumentClassification @default(REQUIRED)
+  isMandatory   Boolean                @default(true) @map("is_mandatory")
+  description   String?                @db.VarChar(255)
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  examVersion   ExamVersion            @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([examVersionId, documentType])
+  @@index([examVersionId])
+  @@map("exam_document_requirements")
+}
+
+model DocumentProcessingJob {
+  id           String           @id @default(uuid()) @db.VarChar(36)
+  documentId   String           @map("document_id") @db.VarChar(36)
+  jobType      String           @map("job_type") @db.VarChar(100) // e.g., "PATTERN_EXTRACTION", "SYLLABUS_EXTRACTION"
+  status       ProcessingStatus @default(PENDING)
+  extractedData Json?           @map("extracted_data")
+  errorMessage String?          @map("error_message") @db.Text
+  startedAt    DateTime?        @map("started_at")
+  completedAt  DateTime?        @map("completed_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  document     ExamDocument     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([status])
+  @@map("document_processing_jobs")
+}
+
+enum BlueprintStatus {
+  DRAFT
+  AI_ANALYZED
+  UNDER_REVIEW
+  VERIFIED
+  LOCKED
+  ACTIVE
+}
+
+model ExamBlueprint {
+  id               String           @id @default(uuid()) @db.VarChar(36)
+  examVersionId    String           @map("exam_version_id") @db.VarChar(36)
+  versionNumber    Int              @default(1) @map("version_number")
+  title            String           @db.VarChar(191)
+  totalQuestions   Int              @map("total_questions")
+  totalMarks       Decimal          @map("total_marks") @db.Decimal(8, 2)
+  durationMinutes  Int              @map("duration_minutes")
+  negativeMarkingRate Decimal       @default(0.0) @map("negative_marking_rate") @db.Decimal(5, 4) // e.g. 0.2500 for 1/4th
+  hasNegativeMarking Boolean        @default(false) @map("has_negative_marking")
+  status           BlueprintStatus  @default(DRAFT)
+  verifiedById     String?          @map("verified_by_id") @db.VarChar(36)
+  verifiedAt       DateTime?        @map("verified_at")
+  lockedById       String?          @map("locked_by_id") @db.VarChar(36)
+  lockedAt         DateTime?        @map("locked_at")
+  instructions     String?          @db.Text
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  examVersion      ExamVersion      @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+  verifiedBy       User?            @relation("BlueprintVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  lockedBy         User?            @relation("BlueprintLocker", fields: [lockedById], references: [id], onDelete: SetNull)
+  sections         BlueprintSection[]
+  rules            BlueprintRule[]
+  mockTests        MockTest[]
+
+  @@unique([examVersionId, versionNumber])
+  @@index([examVersionId])
+  @@index([status])
+  @@map("exam_blueprints")
+}
+
+model BlueprintSection {
+  id             String        @id @default(uuid()) @db.VarChar(36)
+  blueprintId    String        @map("blueprint_id") @db.VarChar(36)
+  name           String        @db.VarChar(150)
+  sectionOrder   Int           @map("section_order")
+  questionCount  Int           @map("question_count")
+  marksPerQuestion Decimal     @map("marks_per_question") @db.Decimal(6, 2)
+  totalMarks     Decimal       @map("total_marks") @db.Decimal(8, 2)
+  negativeRate   Decimal       @default(0.0) @map("negative_rate") @db.Decimal(5, 4)
+  instructions   String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  blueprint      ExamBlueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
+
+  @@unique([blueprintId, sectionOrder])
+  @@index([blueprintId])
+  @@map("blueprint_sections")
+}
+
+model BlueprintRule {
+  id          String        @id @default(uuid()) @db.VarChar(36)
+  blueprintId String        @map("blueprint_id") @db.VarChar(36)
+  ruleType    String        @map("rule_type") @db.VarChar(100) // e.g., "DIFFICULTY_RATIO", "TOPIC_WEIGHTAGE"
+  ruleConfig  Json          @map("rule_config")
+  description String?       @db.Text
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  blueprint   ExamBlueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
+
+  @@index([blueprintId])
+  @@map("blueprint_rules")
+}
+
+// ==========================================
+// 3. SYLLABUS HIERARCHY
+// ==========================================
+
+model Syllabus {
+  id            String            @id @default(uuid()) @db.VarChar(36)
+  examVersionId String            @map("exam_version_id") @db.VarChar(36)
+  title         String            @db.VarChar(191)
+  isVerified    Boolean           @default(false) @map("is_verified")
+  verifiedById  String?           @map("verified_by_id") @db.VarChar(36)
+  verifiedAt    DateTime?         @map("verified_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  examVersion   ExamVersion       @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+  verifiedBy    User?             @relation("SyllabusVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  sections      SyllabusSection[]
+
+  @@index([examVersionId])
+  @@map("syllabi")
+}
+
+model SyllabusSection {
+  id          String          @id @default(uuid()) @db.VarChar(36)
+  syllabusId  String          @map("syllabus_id") @db.VarChar(36)
+  name        String          @db.VarChar(191)
+  code        String?         @db.VarChar(50)
+  description String?         @db.Text
+  sortOrder   Int             @default(0) @map("sort_order")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  syllabus    Syllabus        @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+  topics      SyllabusTopic[]
+
+  @@index([syllabusId])
+  @@map("syllabus_sections")
+}
+
+model SyllabusTopic {
+  id          String          @id @default(uuid()) @db.VarChar(36)
+  sectionId   String          @map("section_id") @db.VarChar(36)
+  name        String          @db.VarChar(191)
+  code        String?         @db.VarChar(50)
+  description String?         @db.Text
+  weightagePercentage Decimal? @map("weightage_percentage") @db.Decimal(5, 2)
+  sortOrder   Int             @default(0) @map("sort_order")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  section     SyllabusSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  topicStats  CandidateTopicStatistic[]
+  topicResults TopicResult[]
+
+  @@index([sectionId])
+  @@map("syllabus_topics")
+}
+
+// ==========================================
+// 4. QUESTION BANK & REVIEWS
+// ==========================================
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  NUMERICAL
+  ASSERTION_REASON
+  TRUE_FALSE
+  MATCHING
+  DESCRIPTIVE
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  DRAFT
+  AI_GENERATED
+  AI_VALIDATED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum QuestionSource {
+  MANUAL
+  AI_GENERATED
+  PREVIOUS_YEAR
+  IMPORTED
+}
+
+model Question {
+  id               String           @id @default(uuid()) @db.VarChar(36)
+  topicId          String           @map("topic_id") @db.VarChar(36)
+  questionType     QuestionType     @default(SINGLE_CHOICE) @map("question_type")
+  difficulty       DifficultyLevel  @default(MEDIUM)
+  status           QuestionStatus   @default(DRAFT)
+  questionText     String           @map("question_text") @db.Text
+  questionTextHindi String?         @map("question_text_hindi") @db.Text
+  explanation      String?          @db.Text
+  explanationHindi String?          @map("explanation_hindi") @db.Text
+  subtopic         String?          @map("subtopic") @db.VarChar(191)
+  marks            Decimal          @default(1.0) @map("marks") @db.Decimal(5, 2)
+  negativeMarks    Decimal          @default(0.0) @map("negative_marks") @db.Decimal(5, 4)
+  source           QuestionSource   @default(MANUAL) @map("source")
+  sourceReference  String?          @map("source_reference") @db.Text
+  isPreviousYear   Boolean          @default(false) @map("is_previous_year")
+  pyqYear          Int?             @map("pyq_year")
+  isAiGenerated    Boolean          @default(false) @map("is_ai_generated")
+  isAiValidated    Boolean          @default(false) @map("is_ai_validated")
+  isHumanVerified  Boolean          @default(false) @map("is_human_verified")
+  sourceType       String?          @map("source_type") @db.VarChar(50) // PDF, DOCX, IMAGE, TEXT, MANUAL
+  sourceFileName   String?          @map("source_file_name") @db.VarChar(255)
+  sourcePage       Int?             @map("source_page")
+  sourceTextSnippet String?         @map("source_text_snippet") @db.Text
+  generationMode   String?          @map("generation_mode") @db.VarChar(50) // SOURCE_ONLY, EXAM_CONTEXT_ASSISTED
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  deletedAt        DateTime?        @map("deleted_at")
+
+  topic            SyllabusTopic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  options          QuestionOption[]
+  translations     QuestionTranslation[]
+  aiGenerations    QuestionAiGeneration[]
+  reviews          QuestionReview[]
+  mockTestQuestions MockTestQuestion[]
+  testAnswers      TestAnswer[]
+  statistics       QuestionStatistic?
+  questionResults  QuestionResult[]
+
+  @@index([topicId])
+  @@index([status])
+  @@index([difficulty])
+  @@index([source])
+  @@map("questions")
+}
+
+model QuestionTranslation {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  questionId   String   @map("question_id") @db.VarChar(36)
+  language     String   @db.VarChar(10) // "hi", "en", "ta", "te", etc.
+  questionText String   @map("question_text") @db.Text
+  explanation  String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, language])
+  @@index([questionId])
+  @@map("question_translations")
+}
+
+model QuestionOption {
+  id           String      @id @default(uuid()) @db.VarChar(36)
+  questionId   String      @map("question_id") @db.VarChar(36)
+  optionKey    String      @map("option_key") @db.VarChar(10) // "A", "B", "C", "D"
+  optionText   String      @map("option_text") @db.Text
+  optionTextHindi String?  @map("option_text_hindi") @db.Text
+  isCorrect    Boolean     @default(false) @map("is_correct")
+  sortOrder    Int         @default(0) @map("sort_order")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  question     Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  translations QuestionOptionTranslation[]
+  selectedInAnswers TestAnswer[]
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+model QuestionOptionTranslation {
+  id         String         @id @default(uuid()) @db.VarChar(36)
+  optionId   String         @map("option_id") @db.VarChar(36)
+  language   String         @db.VarChar(10) // "hi", "en", etc.
+  optionText String         @map("option_text") @db.Text
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  option     QuestionOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, language])
+  @@index([optionId])
+  @@map("question_option_translations")
+}
+
+model QuestionAiGeneration {
+  id            String      @id @default(uuid()) @db.VarChar(36)
+  questionId    String      @map("question_id") @db.VarChar(36)
+  promptUsed    String      @map("prompt_used") @db.Text
+  modelName     String      @map("model_name") @db.VarChar(100)
+  rawResponse   Json        @map("raw_response")
+  tokensUsed    Int?        @map("tokens_used")
+  validationStatus String   @map("validation_status") @db.VarChar(50)
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  question      Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("question_ai_generations")
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+model QuestionReview {
+  id          String         @id @default(uuid()) @db.VarChar(36)
+  questionId  String         @map("question_id") @db.VarChar(36)
+  reviewerId  String         @map("reviewer_id") @db.VarChar(36)
+  decision    ReviewDecision
+  feedback    String?        @db.Text
+  reviewedAt  DateTime       @default(now()) @map("reviewed_at")
+
+  question    Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  reviewer    User           @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([questionId])
+  @@index([reviewerId])
+  @@map("question_reviews")
+}
+
+// ==========================================
+// 5. MOCK TESTS & VALIDATION ENGINE
+// ==========================================
+
+enum MockTestType {
+  FULL_MOCK
+  TOPIC_PRACTICE
+  SECTIONAL_MOCK
+  PREVIOUS_YEAR
+  AI_PRACTICE
+}
+
+enum MockPublishStatus {
+  DRAFT
+  GENERATING
+  VALIDATED
+  VALIDATION_FAILED
+  PUBLISHED
+  ARCHIVED
+}
+
+model MockTest {
+  id              String            @id @default(uuid()) @db.VarChar(36)
+  code            String            @unique @db.VarChar(50) // e.g., "UPHO-2026-MOCK-001"
+  examVersionId   String            @map("exam_version_id") @db.VarChar(36)
+  blueprintId     String?           @map("blueprint_id") @db.VarChar(36)
+  type            MockTestType      @default(FULL_MOCK)
+  sequence        Int               @default(1)
+  title           String            @db.VarChar(191)
+  slug            String            @unique @db.VarChar(150)
+  description     String?           @db.Text
+  durationMinutes Int               @map("duration_minutes")
+  totalQuestions  Int               @map("total_questions")
+  totalMarks      Decimal           @map("total_marks") @db.Decimal(8, 2)
+  negativeRate    Decimal           @default(0.0) @map("negative_rate") @db.Decimal(5, 4)
+  difficulty      DifficultyLevel   @default(MEDIUM)
+  language        String            @default("BILINGUAL") @db.VarChar(20) // ENGLISH, HINDI, BILINGUAL
+  generationType  String            @default("BLUEPRINT") @map("generation_type") @db.VarChar(50) // BLUEPRINT, SOURCE_BASED, TOPIC_PRACTICE, AI_GENERATED
+  createdById     String?           @map("created_by_id") @db.VarChar(36)
+  instructions    String?           @db.Text
+  instructionsHindi String?         @map("instructions_hindi") @db.Text
+  status          MockPublishStatus @default(DRAFT)
+  publishedAt     DateTime?         @map("published_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  deletedAt       DateTime?         @map("deleted_at")
+
+  examVersion     ExamVersion       @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+  blueprint       ExamBlueprint?    @relation(fields: [blueprintId], references: [id], onDelete: SetNull)
+  createdBy       User?             @relation("MockTestCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  sections        MockTestSection[]
+  questions       MockTestQuestion[]
+  generationRequests MockGenerationRequest[]
+  validationResults MockValidationResult[]
+  attempts        TestAttempt[]
+
+  @@index([examVersionId])
+  @@index([blueprintId])
+  @@index([status])
+  @@index([code])
+  @@map("mock_tests")
+}
+
+model MockTestSection {
+  id              String             @id @default(uuid()) @db.VarChar(36)
+  mockTestId      String             @map("mock_test_id") @db.VarChar(36)
+  name            String             @db.VarChar(150)
+  sectionOrder    Int                @map("section_order")
+  questionCount   Int                @map("question_count")
+  marksPerQuestion Decimal           @map("marks_per_question") @db.Decimal(6, 2)
+  negativeRate    Decimal            @default(0.0) @map("negative_rate") @db.Decimal(5, 4)
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  mockTest        MockTest           @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+  questions       MockTestQuestion[]
+  sectionResults  SectionResult[]
+
+  @@unique([mockTestId, sectionOrder])
+  @@index([mockTestId])
+  @@map("mock_test_sections")
+}
+
+model MockTestQuestion {
+  id                String          @id @default(uuid()) @db.VarChar(36)
+  mockTestId        String          @map("mock_test_id") @db.VarChar(36)
+  mockTestSectionId String          @map("mock_test_section_id") @db.VarChar(36)
+  questionId        String          @map("question_id") @db.VarChar(36)
+  questionOrder     Int             @map("question_order")
+  marks             Decimal         @map("marks") @db.Decimal(6, 2)
+  negativeMarks     Decimal         @map("negative_marks") @db.Decimal(6, 2)
+  createdAt         DateTime        @default(now()) @map("created_at")
+
+  mockTest          MockTest        @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+  section           MockTestSection @relation(fields: [mockTestSectionId], references: [id], onDelete: Cascade)
+  question          Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([mockTestId, questionOrder])
+  @@index([mockTestId])
+  @@index([mockTestSectionId])
+  @@index([questionId])
+  @@map("mock_test_questions")
+}
+
+model MockGenerationRequest {
+  id            String           @id @default(uuid()) @db.VarChar(36)
+  examVersionId String           @map("exam_version_id") @db.VarChar(36)
+  mockTestId    String?          @map("mock_test_id") @db.VarChar(36)
+  requestedById String           @map("requested_by_id") @db.VarChar(36)
+  status        ProcessingStatus @default(PENDING)
+  criteria      Json
+  errorMessage  String?          @map("error_message") @db.Text
+  createdAt     DateTime         @default(now()) @map("created_at")
+  completedAt   DateTime?        @map("completed_at")
+
+  examVersion   ExamVersion      @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+  mockTest      MockTest?        @relation(fields: [mockTestId], references: [id], onDelete: SetNull)
+
+  @@index([examVersionId])
+  @@index([mockTestId])
+  @@index([status])
+  @@map("mock_generation_requests")
+}
+
+model MockValidationResult {
+  id           String      @id @default(uuid()) @db.VarChar(36)
+  mockTestId   String      @map("mock_test_id") @db.VarChar(36)
+  isValid      Boolean     @map("is_valid")
+  scoreReport  Json        @map("score_report") // Detailed check-by-check result
+  errorSummary String?     @map("error_summary") @db.Text
+  validatedAt  DateTime    @default(now()) @map("validated_at")
+
+  mockTest     MockTest    @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+
+  @@index([mockTestId])
+  @@map("mock_validation_results")
+}
+
+// ==========================================
+// 6. CANDIDATE ATTEMPTS & TRACKING
+// ==========================================
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED
+  ABANDONED
+  TIMED_OUT
+  EXPIRED
+  CANCELLED
+}
+
+model TestAttempt {
+  id               String          @id @default(uuid()) @db.VarChar(36)
+  candidateId      String          @map("candidate_id") @db.VarChar(36)
+  mockTestId       String          @map("mock_test_id") @db.VarChar(36)
+  attemptLanguage  String          @default("BILINGUAL") @map("attempt_language") @db.VarChar(20) // ENGLISH, HINDI, BILINGUAL
+  instructionsAcknowledgedAt DateTime? @map("instructions_acknowledged_at")
+  instructionsLanguage String?     @map("instructions_language") @db.VarChar(10)
+  status           AttemptStatus   @default(IN_PROGRESS)
+  startedAt        DateTime        @default(now()) @map("started_at")
+  submittedAt      DateTime?       @map("submitted_at")
+  totalTimeSpentSeconds Int        @default(0) @map("total_time_spent_seconds")
+  lastHeartbeatAt  DateTime        @default(now()) @map("last_heartbeat_at")
+  ipAddress        String?         @map("ip_address") @db.VarChar(100)
+  userAgent        String?         @map("user_agent") @db.VarChar(255)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  candidate        User            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  mockTest         MockTest        @relation(fields: [mockTestId], references: [id], onDelete: Restrict)
+  answers          TestAnswer[]
+  answerEvents     AnswerEvent[]
+  attemptEvents    AttemptEvent[]
+  testResult       TestResult?
+
+  @@index([candidateId])
+  @@index([mockTestId])
+  @@index([status])
+  @@map("test_attempts")
+}
+
+model TestAnswer {
+  id               String          @id @default(uuid()) @db.VarChar(36)
+  attemptId        String          @map("attempt_id") @db.VarChar(36)
+  questionId       String          @map("question_id") @db.VarChar(36)
+  selectedOptionId String?         @map("selected_option_id") @db.VarChar(36)
+  numericalAnswer  Decimal?        @map("numerical_answer") @db.Decimal(10, 4)
+  isMarkedForReview Boolean        @default(false) @map("is_marked_for_review")
+  isVisited        Boolean         @default(false) @map("is_visited")
+  isAnswered       Boolean         @default(false) @map("is_answered")
+  timeSpentSeconds Int             @default(0) @map("time_spent_seconds")
+  changeCount      Int             @default(0) @map("change_count")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  attempt          TestAttempt     @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question         Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  selectedOption   QuestionOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@map("test_answers")
+}
+
+model AnswerEvent {
+  id            String      @id @default(uuid()) @db.VarChar(36)
+  attemptId     String      @map("attempt_id") @db.VarChar(36)
+  questionId    String      @map("question_id") @db.VarChar(36)
+  eventType     String      @map("event_type") @db.VarChar(50) // e.g., "SELECT_ANSWER", "CLEAR_ANSWER", "MARK_REVIEW", "UNMARK_REVIEW"
+  previousValue Json?       @map("previous_value")
+  newValue      Json?       @map("new_value")
+  timeOffsetMs  Int         @map("time_offset_ms")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  attempt       TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@index([questionId])
+  @@map("answer_events")
+}
+
+model AttemptEvent {
+  id           String      @id @default(uuid()) @db.VarChar(36)
+  attemptId    String      @map("attempt_id") @db.VarChar(36)
+  eventType    String      @map("event_type") @db.VarChar(50) // e.g., "START", "SWITCH_SECTION", "PAUSE", "RESUME", "SUBMIT", "AUTO_SUBMIT"
+  eventData    Json?       @map("event_data")
+  timeOffsetMs Int         @map("time_offset_ms")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  attempt      TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@map("attempt_events")
+}
+
+// ==========================================
+// 7. RESULTS & ANALYTICS
+// ==========================================
+
+model TestResult {
+  id               String          @id @default(uuid()) @db.VarChar(36)
+  attemptId        String          @unique @map("attempt_id") @db.VarChar(36)
+  totalQuestions   Int             @map("total_questions")
+  attemptedQuestions Int           @map("attempted_questions")
+  correctAnswers   Int             @map("correct_answers")
+  incorrectAnswers Int             @map("incorrect_answers")
+  unattemptedQuestions Int         @map("unattempted_questions")
+  rawScore         Decimal         @map("raw_score") @db.Decimal(8, 2)
+  penaltyDeduction Decimal         @map("penalty_deduction") @db.Decimal(8, 2)
+  netScore         Decimal         @map("net_score") @db.Decimal(8, 2)
+  totalMarks       Decimal         @map("total_marks") @db.Decimal(8, 2)
+  percentage       Decimal         @map("percentage") @db.Decimal(5, 2)
+  percentile       Decimal?        @db.Decimal(5, 2)
+  rank             Int?
+  accuracyRate     Decimal         @map("accuracy_rate") @db.Decimal(5, 2)
+  geminiFeedback   String?         @map("gemini_feedback") @db.Text
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  attempt          TestAttempt     @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  sectionResults   SectionResult[]
+  topicResults     TopicResult[]
+  questionResults  QuestionResult[]
+
+  @@index([netScore])
+  @@map("test_results")
+}
+
+model SectionResult {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+  testResultId    String          @map("test_result_id") @db.VarChar(36)
+  mockSectionId   String          @map("mock_section_id") @db.VarChar(36)
+  sectionName     String          @map("section_name") @db.VarChar(150)
+  totalQuestions  Int             @map("total_questions")
+  attempted       Int
+  correct         Int
+  incorrect       Int
+  score           Decimal         @db.Decimal(8, 2)
+  totalMarks      Decimal         @map("total_marks") @db.Decimal(8, 2)
+  accuracy        Decimal         @db.Decimal(5, 2)
+  timeSpentSeconds Int            @map("time_spent_seconds")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  testResult      TestResult      @relation(fields: [testResultId], references: [id], onDelete: Cascade)
+  mockSection     MockTestSection @relation(fields: [mockSectionId], references: [id], onDelete: Cascade)
+
+  @@index([testResultId])
+  @@map("section_results")
+}
+
+model TopicResult {
+  id             String        @id @default(uuid()) @db.VarChar(36)
+  testResultId   String        @map("test_result_id") @db.VarChar(36)
+  topicId        String        @map("topic_id") @db.VarChar(36)
+  topicName      String        @map("topic_name") @db.VarChar(191)
+  totalQuestions Int           @map("total_questions")
+  attempted      Int
+  correct        Int
+  incorrect      Int
+  accuracy       Decimal       @db.Decimal(5, 2)
+  timeSpentSeconds Int         @map("time_spent_seconds")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  testResult     TestResult    @relation(fields: [testResultId], references: [id], onDelete: Cascade)
+  topic          SyllabusTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([testResultId])
+  @@index([topicId])
+  @@map("topic_results")
+}
+
+model QuestionResult {
+  id               String      @id @default(uuid()) @db.VarChar(36)
+  testResultId     String      @map("test_result_id") @db.VarChar(36)
+  questionId       String      @map("question_id") @db.VarChar(36)
+  selectedOptionId String?     @map("selected_option_id") @db.VarChar(36)
+  selectedOptionKey String?    @map("selected_option_key") @db.VarChar(10)
+  correctOptionKey String?     @map("correct_option_key") @db.VarChar(10)
+  isAttempted      Boolean     @map("is_attempted")
+  isCorrect        Boolean     @map("is_correct")
+  isMarkedForReview Boolean    @default(false) @map("is_marked_for_review")
+  marksAwarded     Decimal     @map("marks_awarded") @db.Decimal(6, 2)
+  timeSpentSeconds Int         @map("time_spent_seconds")
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  testResult       TestResult  @relation(fields: [testResultId], references: [id], onDelete: Cascade)
+  question         Question    @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@index([testResultId])
+  @@index([questionId])
+  @@map("question_results")
+}
+
+model CandidateExamStatistic {
+  id              String      @id @default(uuid()) @db.VarChar(36)
+  candidateId     String      @map("candidate_id") @db.VarChar(36)
+  examVersionId   String      @map("exam_version_id") @db.VarChar(36)
+  attemptsCount   Int         @default(0) @map("attempts_count")
+  bestScore       Decimal     @default(0.0) @map("best_score") @db.Decimal(8, 2)
+  averageScore    Decimal     @default(0.0) @map("average_score") @db.Decimal(8, 2)
+  averageAccuracy Decimal     @default(0.0) @map("average_accuracy") @db.Decimal(5, 2)
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  candidate       User        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  examVersion     ExamVersion @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, examVersionId])
+  @@index([candidateId])
+  @@map("candidate_exam_statistics")
+}
+
+model CandidateTopicStatistic {
+  id              String        @id @default(uuid()) @db.VarChar(36)
+  candidateId     String        @map("candidate_id") @db.VarChar(36)
+  topicId         String        @map("topic_id") @db.VarChar(36)
+  questionsSeen   Int           @default(0) @map("questions_seen")
+  questionsCorrect Int          @default(0) @map("questions_correct")
+  accuracyRate    Decimal       @default(0.0) @map("accuracy_rate") @db.Decimal(5, 2)
+  isWeakTopic     Boolean       @default(false) @map("is_weak_topic")
+  isStrongTopic   Boolean       @default(false) @map("is_strong_topic")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  candidate       User          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  topic           SyllabusTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, topicId])
+  @@index([candidateId])
+  @@index([isWeakTopic])
+  @@map("candidate_topic_statistics")
+}
+
+model QuestionStatistic {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  questionId      String   @unique @map("question_id") @db.VarChar(36)
+  totalAttempts   Int      @default(0) @map("total_attempts")
+  correctAttempts Int      @default(0) @map("correct_attempts")
+  avgTimeSeconds  Decimal  @default(0.0) @map("avg_time_seconds") @db.Decimal(6, 2)
+  discriminationIndex Decimal? @map("discrimination_index") @db.Decimal(4, 3)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  question        Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("question_statistics")
+}
+
+// ==========================================
+// 8. STORAGE & AUDITING
+// ==========================================
+
+enum FileVisibility {
+  PRIVATE
+  PUBLIC
+}
+
+model File {
+  id           String         @id @default(uuid()) @db.VarChar(36)
+  originalName String         @map("original_name") @db.VarChar(255)
+  storedName   String         @map("stored_name") @db.VarChar(255)
+  storagePath  String         @map("storage_path") @db.VarChar(255)
+  mimeType     String         @map("mime_type") @db.VarChar(100)
+  fileSize     BigInt         @map("file_size")
+  checksumSha256 String       @map("checksum_sha256") @db.VarChar(64)
+  visibility   FileVisibility @default(PRIVATE)
+  folderCategory String       @map("folder_category") @db.VarChar(100) // "notifications", "question-assets", etc.
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  examDocuments ExamDocument[]
+  practiceResources PracticeResource[]
+
+  @@index([storagePath])
+  @@index([checksumSha256])
+  @@map("files")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  userId       String?  @map("user_id") @db.VarChar(36)
+  action       String   @db.VarChar(100)
+  resourceType String   @map("resource_type") @db.VarChar(100)
+  resourceId   String?  @map("resource_id") @db.VarChar(36)
+  ipAddress    String?  @map("ip_address") @db.VarChar(100)
+  userAgent    String?  @map("user_agent") @db.VarChar(255)
+  changesDiff  Json?    @map("changes_diff")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==========================================
+// 9. CANDIDATE PRACTICE SYSTEM (ISOLATED)
+// ==========================================
+
+enum PracticeResourceType {
+  DOCUMENT
+  TEXT
+  URL
+  TOPIC
+}
+
+enum PracticeType {
+  DOCUMENT_PRACTICE
+  TEXT_PRACTICE
+  URL_PRACTICE
+  TOPIC_PRACTICE
+  MIXED_PRACTICE
+}
+
+enum PracticeStatus {
+  DRAFT
+  GENERATING
+  READY
+  FAILED
+  ARCHIVED
+}
+
+model PracticeResource {
+  id               String               @id @default(uuid()) @db.VarChar(36)
+  candidateId      String               @map("candidate_id") @db.VarChar(36)
+  resourceType     PracticeResourceType @map("resource_type")
+  title            String               @db.VarChar(191)
+  fileId           String?              @map("file_id") @db.VarChar(36)
+  fileType         String?              @map("file_type") @db.VarChar(50)
+  rawText          String?              @map("raw_text") @db.LongText
+  sourceUrl        String?              @map("source_url") @db.Text
+  urlHostname      String?              @map("url_hostname") @db.VarChar(191)
+  contentHash      String?              @map("content_hash") @db.VarChar(64)
+  extractionStatus ProcessingStatus     @default(COMPLETED) @map("extraction_status")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  candidate        User                 @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  file             File?                @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  practiceTests    PracticeTest[]
+
+  @@index([candidateId])
+  @@index([resourceType])
+  @@map("practice_resources")
+}
+
+model PracticeTest {
+  id              String            @id @default(uuid()) @db.VarChar(36)
+  code            String            @unique @db.VarChar(50) // e.g. "PRAC-8F72K"
+  candidateId     String            @map("candidate_id") @db.VarChar(36)
+  resourceId      String?           @map("resource_id") @db.VarChar(36)
+  examVersionId   String?           @map("exam_version_id") @db.VarChar(36)
+  title           String            @db.VarChar(191)
+  practiceType    PracticeType      @default(TEXT_PRACTICE) @map("practice_type")
+  generationMode  String            @default("SOURCE_ONLY") @map("generation_mode") @db.VarChar(50)
+  totalQuestions  Int               @map("total_questions")
+  durationMinutes Int               @map("duration_minutes")
+  difficulty      DifficultyLevel   @default(MEDIUM)
+  language        String            @default("English") @db.VarChar(20)
+  status          PracticeStatus    @default(READY)
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  deletedAt       DateTime?         @map("deleted_at")
+
+  candidate       User              @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  resource        PracticeResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  examVersion     ExamVersion?      @relation(fields: [examVersionId], references: [id], onDelete: SetNull)
+  questions       PracticeTestQuestion[]
+  attempts        PracticeAttempt[]
+
+  @@index([candidateId])
+  @@index([resourceId])
+  @@index([examVersionId])
+  @@index([code])
+  @@map("practice_tests")
+}
+
+model PracticeTestQuestion {
+  id                String                 @id @default(uuid()) @db.VarChar(36)
+  practiceTestId    String                 @map("practice_test_id") @db.VarChar(36)
+  questionOrder     Int                    @map("question_order")
+  questionText      String                 @map("question_text") @db.Text
+  questionTextHindi String?                @map("question_text_hindi") @db.Text
+  explanation       String?                @db.Text
+  explanationHindi  String?                @map("explanation_hindi") @db.Text
+  difficulty        DifficultyLevel        @default(MEDIUM)
+  topic             String?                @db.VarChar(191)
+  subtopic          String?                @db.VarChar(191)
+  marks             Decimal                @default(1.0) @map("marks") @db.Decimal(5, 2)
+  negativeMarks     Decimal                @default(0.0) @map("negative_marks") @db.Decimal(5, 2)
+  createdAt         DateTime               @default(now()) @map("created_at")
+
+  practiceTest      PracticeTest           @relation(fields: [practiceTestId], references: [id], onDelete: Cascade)
+  options           PracticeQuestionOption[]
+  answers           PracticeAnswer[]
+
+  @@unique([practiceTestId, questionOrder])
+  @@index([practiceTestId])
+  @@map("practice_test_questions")
+}
+
+model PracticeQuestionOption {
+  id                String               @id @default(uuid()) @db.VarChar(36)
+  questionId        String               @map("question_id") @db.VarChar(36)
+  optionKey         String               @map("option_key") @db.VarChar(10) // "A", "B", "C", "D"
+  optionText        String               @map("option_text") @db.Text
+  optionTextHindi   String?              @map("option_text_hindi") @db.Text
+  isCorrect         Boolean              @default(false) @map("is_correct")
+  sortOrder         Int                  @default(0) @map("sort_order")
+
+  question          PracticeTestQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedInAnswers PracticeAnswer[]
+
+  @@index([questionId])
+  @@map("practice_question_options")
+}
+
+model PracticeAttempt {
+  id               String          @id @default(uuid()) @db.VarChar(36)
+  candidateId      String          @map("candidate_id") @db.VarChar(36)
+  practiceTestId   String          @map("practice_test_id") @db.VarChar(36)
+  status           AttemptStatus   @default(IN_PROGRESS)
+  startedAt        DateTime        @default(now()) @map("started_at")
+  submittedAt      DateTime?       @map("submitted_at")
+  totalTimeSpentSeconds Int        @default(0) @map("total_time_spent_seconds")
+  lastHeartbeatAt  DateTime        @default(now()) @map("last_heartbeat_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  candidate        User            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  practiceTest     PracticeTest    @relation(fields: [practiceTestId], references: [id], onDelete: Cascade)
+  answers          PracticeAnswer[]
+  result           PracticeResult?
+
+  @@index([candidateId])
+  @@index([practiceTestId])
+  @@index([status])
+  @@map("practice_attempts")
+}
+
+model PracticeAnswer {
+  id               String                 @id @default(uuid()) @db.VarChar(36)
+  attemptId        String                 @map("attempt_id") @db.VarChar(36)
+  questionId       String                 @map("question_id") @db.VarChar(36)
+  selectedOptionId String?                @map("selected_option_id") @db.VarChar(36)
+  isAnswered       Boolean                @default(false) @map("is_answered")
+  isMarkedForReview Boolean               @default(false) @map("is_marked_for_review")
+  timeSpentSeconds Int                    @default(0) @map("time_spent_seconds")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  attempt          PracticeAttempt        @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question         PracticeTestQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOption   PracticeQuestionOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@map("practice_answers")
+}
+
+model PracticeResult {
+  id               String          @id @default(uuid()) @db.VarChar(36)
+  attemptId        String          @unique @map("attempt_id") @db.VarChar(36)
+  totalQuestions   Int             @map("total_questions")
+  attemptedQuestions Int           @map("attempted_questions")
+  correctAnswers   Int             @map("correct_answers")
+  incorrectAnswers Int             @map("incorrect_answers")
+  unattemptedQuestions Int         @map("unattempted_questions")
+  score            Decimal         @map("score") @db.Decimal(8, 2)
+  totalMarks       Decimal         @map("total_marks") @db.Decimal(8, 2)
+  accuracyRate     Decimal         @map("accuracy_rate") @db.Decimal(5, 2)
+  percentage       Decimal         @map("percentage") @db.Decimal(5, 2)
+  geminiFeedback   String?         @map("gemini_feedback") @db.Text
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  attempt          PracticeAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("practice_results")
+}
+
+// ==========================================
+// 10. APPLICATION TOUR VIDEOS
+// ==========================================
+
+enum TourVideoType {
+  FULL_APPLICATION_TOUR
+  CANDIDATE_END_TOUR
+}
+
+model ApplicationTourVideo {
+  id              String        @id @default(uuid()) @db.VarChar(36)
+  type            TourVideoType @default(FULL_APPLICATION_TOUR)
+  title           String        @db.VarChar(191)
+  description     String?       @db.Text
+  fileName        String        @map("file_name") @db.VarChar(255)
+  filePath        String        @map("file_path") @db.VarChar(500)
+  mimeType        String        @map("mime_type") @db.VarChar(100)
+  fileSize        Int           @map("file_size") // In bytes
+  durationSeconds Int?          @map("duration_seconds")
+  locale          String        @default("all") @db.VarChar(10) // "en", "hi", or "all"
+  isPublished     Boolean       @default(false) @map("is_published")
+  createdById     String?       @map("created_by_id") @db.VarChar(36)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  createdBy       User?         @relation("TourVideoCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([locale])
+  @@index([isPublished])
+  @@map("application_tour_videos")
+}
+
+// ==========================================
+// 11. EMAIL & OTP AUTHENTICATION
+// ==========================================
+
+model EmailVerification {
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  userId       String?   @map("user_id") @db.VarChar(36)
+  email        String    @db.VarChar(191)
+  otpHash      String    @map("otp_hash") @db.VarChar(255)
+  expiresAt    DateTime  @map("expires_at")
+  attemptCount Int       @default(0) @map("attempt_count")
+  lastSentAt   DateTime  @default(now()) @map("last_sent_at")
+  verifiedAt   DateTime? @map("verified_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verifications")
+}
+
+model PasswordResetOTP {
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  userId       String    @map("user_id") @db.VarChar(36)
+  email        String    @db.VarChar(191)
+  otpHash      String    @map("otp_hash") @db.VarChar(255)
+  expiresAt    DateTime  @map("expires_at")
+  attemptCount Int       @default(0) @map("attempt_count")
+  lastSentAt   DateTime  @default(now()) @map("last_sent_at")
+  usedAt       DateTime? @map("used_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_otps")
+}
+
+// ==========================================
+// 12. CANDIDATE PROFILE, ADDRESS, EDUCATION & EXPERIENCE
+// ==========================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+model CandidateProfile {
+  id                   String               @id @default(uuid()) @db.VarChar(36)
+  userId               String               @unique @map("user_id") @db.VarChar(36)
+  dateOfBirth          DateTime?            @map("date_of_birth")
+  gender               Gender?              @default(PREFER_NOT_TO_SAY)
+  alternativePhone     String?              @map("alternative_phone") @db.VarChar(50)
+  bio                  String?              @db.Text
+  completionPercentage Int                  @default(0) @map("completion_percentage")
+  isSubmitted          Boolean              @default(false) @map("is_submitted")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address              CandidateAddress?
+  educations           CandidateEducation[]
+  experiences          CandidateExperience[]
+
+  @@index([userId])
+  @@map("candidate_profiles")
+}
+
+model CandidateAddress {
+  id           String           @id @default(uuid()) @db.VarChar(36)
+  profileId    String           @unique @map("profile_id") @db.VarChar(36)
+  addressLine1 String           @map("address_line_1") @db.VarChar(255)
+  addressLine2 String?          @map("address_line_2") @db.VarChar(255)
+  city         String           @db.VarChar(100)
+  district     String?          @db.VarChar(100)
+  state        String           @db.VarChar(100)
+  postalCode   String           @map("postal_code") @db.VarChar(20)
+  country      String           @default("India") @db.VarChar(100)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  profile      CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("candidate_addresses")
+}
+
+model CandidateEducation {
+  id             String           @id @default(uuid()) @db.VarChar(36)
+  profileId      String           @map("profile_id") @db.VarChar(36)
+  qualification  String           @db.VarChar(150)
+  institution    String           @db.VarChar(255)
+  specialization String?          @db.VarChar(150)
+  startYear      Int              @map("start_year")
+  completionYear Int              @map("completion_year")
+  gradeOrPercentage String?       @map("grade_or_percentage") @db.VarChar(50)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  profile        CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("candidate_educations")
+}
+
+model CandidateExperience {
+  id             String           @id @default(uuid()) @db.VarChar(36)
+  profileId      String           @map("profile_id") @db.VarChar(36)
+  organization   String           @db.VarChar(255)
+  jobTitle       String           @map("job_title") @db.VarChar(150)
+  employmentType String           @default("Full-time") @map("employment_type") @db.VarChar(50)
+  startDate      DateTime         @map("start_date")
+  endDate        DateTime?        @map("end_date")
+  isCurrent      Boolean          @default(false) @map("is_current")
+  description    String?          @db.Text
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  profile        CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("candidate_experiences")
+}
+
+// ==========================================
+// 12. DATABASE BACKUP & MAINTENANCE MODELS
+// ==========================================
+
+enum DatabaseBackupStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model DatabaseBackup {
+  id           String               @id @default(uuid()) @db.VarChar(36)
+  filename     String               @unique @db.VarChar(191)
+  storagePath  String               @map("storage_path") @db.VarChar(500)
+  sizeBytes    BigInt               @default(0) @map("size_bytes")
+  databaseName String               @map("database_name") @db.VarChar(100)
+  environment  String               @default("development") @db.VarChar(50)
+  status       DatabaseBackupStatus @default(PENDING)
+  errorMessage String?              @map("error_message") @db.Text
+  tablesCount  Int                  @default(0) @map("tables_count")
+  rowsCount    Int                  @default(0) @map("rows_count")
+  createdById  String?              @map("created_by_id") @db.VarChar(36)
+  completedAt  DateTime?            @map("completed_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  createdBy    User?                @relation("BackupCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("database_backups")
+}

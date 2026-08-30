@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExamPattern AI — Administrator Application Tour & Workflow Guide</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #eff6ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --emerald-600: #059669;
+      --emerald-50: #ecfdf5;
+      --amber-600: #d97706;
+      --amber-50: #fffbeb;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--slate-50);
+      color: var(--slate-800);
+      line-height: 1.6;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--slate-200);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0.875rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-weight: 800;
+      font-size: 1.125rem;
+      color: var(--slate-900);
+    }
+    .brand-badge {
+      background: var(--primary);
+      color: white;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.375rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .lang-switcher {
+      display: flex;
+      gap: 0.375rem;
+      background: var(--slate-100);
+      padding: 0.25rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--slate-200);
+    }
+    .lang-btn {
+      background: transparent;
+      border: none;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.375rem;
+      font-size: 0.8125rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--slate-600);
+      transition: all 0.15s ease;
+    }
+    .lang-btn.active {
+      background: white;
+      color: var(--primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 2rem;
+    }
+    @media (max-width: 860px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        display: none;
+      }
+    }
+    .sidebar {
+      position: sticky;
+      top: 5rem;
+      height: calc(100vh - 6rem);
+      overflow-y: auto;
+      background: white;
+      border: 1px solid var(--slate-200);
+      border-radius: 1rem;
+      padding: 1.25rem;
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate-600);
+      margin-bottom: 0.75rem;
+      font-weight: 800;
+    }
+    .toc-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+    .toc-link {
+      display: block;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--slate-700);
+      text-decoration: none;
+      border-radius: 0.5rem;
+      transition: all 0.15s ease;
+    }
+    .toc-link:hover {
+      background: var(--slate-100);
+      color: var(--primary);
+    }
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .hero-card {
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      color: white;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .hero-card h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      line-height: 1.2;
+    }
+    .hero-card p {
+      font-size: 0.9375rem;
+      opacity: 0.9;
+      max-width: 700px;
+    }
+    .step-card {
+      background: white;
+      border: 1px solid var(--slate-200);
+      border-radius: 1rem;
+      padding: 1.75rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      scroll-margin-top: 5rem;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--slate-100);
+      padding-bottom: 0.875rem;
+      flex-wrap: wrap;
+    }
+    .step-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--slate-900);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+    .step-number {
+      background: var(--primary-light);
+      color: var(--primary);
+      width: 2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 800;
+    }
+    .route-badge {
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: var(--slate-100);
+      padding: 0.25rem 0.625rem;
+      border-radius: 0.375rem;
+      color: var(--slate-700);
+      font-weight: 700;
+    }
+    .callout {
+      padding: 1rem 1.25rem;
+      border-radius: 0.75rem;
+      margin: 1rem 0;
+      font-size: 0.875rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .callout-tip {
+      background: var(--emerald-50);
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+    .callout-warning {
+      background: var(--amber-50);
+      border: 1px solid #fde68a;
+      color: #92400e;
+    }
+    .callout-title {
+      font-weight: 800;
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .step-instructions {
+      margin: 1rem 0;
+      padding-left: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-size: 0.9375rem;
+    }
+    .expected-result {
+      margin-top: 1rem;
+      padding: 0.875rem;
+      background: var(--slate-50);
+      border-radius: 0.5rem;
+      border-left: 3px solid var(--primary);
+      font-size: 0.875rem;
+    }
+    footer {
+      background: white;
+      border-top: 1px solid var(--slate-200);
+      padding: 2rem;
+      text-align: center;
+      font-size: 0.8125rem;
+      color: var(--slate-600);
+      margin-top: 3rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>ExamPattern AI</span>
+      <span class="brand-badge">Admin Tour</span>
+    </div>
+    <div class="lang-switcher">
+      <button class="lang-btn active" id="btn-en" onclick="setLanguage('en')">English</button>
+      <button class="lang-btn" id="btn-hi" onclick="setLanguage('hi')">हिन्दी</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <aside class="sidebar">
+      <h4 class="t-toc">Table of Contents</h4>
+      <ul class="toc-list">
+        <li><a href="#section-core" class="toc-link">1. Core Architectural Principles</a></li>
+        <li><a href="#section-login" class="toc-link">2. Admin Authentication</a></li>
+        <li><a href="#section-exams" class="toc-link">3. Exam & Cycle Versions</a></li>
+        <li><a href="#section-docs" class="toc-link">4. Documents & Verification</a></li>
+        <li><a href="#section-syllabus" class="toc-link">5. Syllabus Hierarchy</a></li>
+        <li><a href="#section-blueprint" class="toc-link">6. Blueprint & Locking</a></li>
+        <li><a href="#section-questions" class="toc-link">7. Question Bank & AI Gen</a></li>
+        <li><a href="#section-mocks" class="toc-link">8. Full-Pattern Mocks</a></li>
+        <li><a href="#section-candidates" class="toc-link">9. Candidate Audits & Attempts</a></li>
+        <li><a href="#section-logs" class="toc-link">10. Audit Logs & Settings</a></li>
+      </ul>
+    </aside>
+
+    <main class="main-content">
+      <div class="hero-card">
+        <h1 id="hero-title">Administrator Application Tour & Operating Guide</h1>
+        <p id="hero-desc">
+          Authoritative walkthrough of the ExamPattern AI console. Understand document verification, blueprint lifecycle state machines, controlled AI generation, and candidate attempt audits.
+        </p>
+      </div>
+
+      <!-- Section 1 -->
+      <section id="section-core" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">1</span>
+            <span id="title-core">Core Product Principle</span>
+          </div>
+          <span class="route-badge">AGENTS.md Compliance</span>
+        </div>
+        <p id="desc-core">
+          ExamPattern AI follows a strict hierarchy where official exam blueprints verified by human administrators serve as the single source of truth. AI is never the final authority for question counts, negative marking rates, or durations.
+        </p>
+        <div class="callout callout-warning">
+          <span class="callout-title" id="warn-title-1">Authority Rule</span>
+          <span id="warn-desc-1">Once an exam blueprint reaches the LOCKED state, it is permanently immutable. Any official notification corrigendum must spawn a new distinct version.</span>
+        </div>
+        <div class="expected-result" id="exp-core">
+          <strong>Expected System Behavior:</strong> All mock generation requests strictly reference the locked blueprint snapshot.
+        </div>
+      </section>
+
+      <!-- Section 2 -->
+      <section id="section-login" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">2</span>
+            <span id="title-login">Admin Authentication & Session Security</span>
+          </div>
+          <span class="route-badge">/[locale]/login</span>
+        </div>
+        <ol class="step-instructions">
+          <li id="login-step-1">Navigate to the login portal (<code>/en/login</code> or <code>/hi/login</code>).</li>
+          <li id="login-step-2">Enter your assigned administrator email address and secure password.</li>
+          <li id="login-step-3">Submit the form. Upon authentication, you are redirected to <code>/admin/dashboard</code>.</li>
+        </ol>
+        <div class="callout callout-tip">
+          <span class="callout-title" id="tip-title-1">Security Standard</span>
+          <span id="tip-desc-1">All administrative routes enforce server-side RBAC checks in addition to Next.js middleware protection.</span>
+        </div>
+      </section>
+
+      <!-- Section 3 -->
+      <section id="section-exams" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">3</span>
+            <span id="title-exams">Exam & Version Management</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/exams</span>
+        </div>
+        <ol class="step-instructions">
+          <li id="exam-step-1">Open <strong>Exams & Versions</strong> menu in the sidebar.</li>
+          <li id="exam-step-2">Click <strong>Create Exam</strong> and enter exam name, code, category, and conducting authority.</li>
+          <li id="exam-step-3">Create a distinct <strong>Exam Version</strong> (e.g., "2026 Regular Notification").</li>
+        </ol>
+        <div class="expected-result" id="exp-exams">
+          <strong>Expected Result:</strong> An isolated examination context is initialized ready for official document attachment.
+        </div>
+      </section>
+
+      <!-- Section 4 -->
+      <section id="section-docs" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">4</span>
+            <span id="title-docs">Official Documents & Verification</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/notifications</span>
+        </div>
+        <ol class="step-instructions">
+          <li id="doc-step-1">Upload official advertisement and syllabus PDFs to secure local storage.</li>
+          <li id="doc-step-2">Trigger <strong>Gemini AI Document Extraction</strong> to extract pattern and syllabus nodes.</li>
+          <li id="doc-step-3">Perform human verification and click <strong>Verify Document</strong>.</li>
+        </ol>
+        <div class="callout callout-warning">
+          <span class="callout-title" id="warn-title-2">Extraction Rule</span>
+          <span id="warn-desc-2">Only verified authoritative documents can be used as the baseline for official mock generation.</span>
+        </div>
+      </section>
+
+      <!-- Section 5 -->
+      <section id="section-syllabus" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">5</span>
+            <span id="title-syl">Syllabus Hierarchy & Tree Selector</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/exams/[id]/syllabus</span>
+        </div>
+        <p id="desc-syl">
+          Configure sections and topics with full tree navigation, "Select All", and parent-child cascades. Every question created or generated maps to a verified syllabus node.
+        </p>
+      </section>
+
+      <!-- Section 6 -->
+      <section id="section-blueprint" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">6</span>
+            <span id="title-bp">Blueprint Configuration & Locking</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/blueprints</span>
+        </div>
+        <p id="desc-bp">
+          Define total question counts, section question breakdown, marks per item, duration in minutes, and negative marking rates. Once verified, click <strong>Lock Blueprint</strong>.
+        </p>
+        <div class="expected-result" id="exp-bp">
+          <strong>State Machine:</strong> Blueprint state becomes <code>LOCKED</code> and <code>ACTIVE</code>.
+        </div>
+      </section>
+
+      <!-- Section 7 -->
+      <section id="section-questions" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">7</span>
+            <span id="title-q">Question Bank & Controlled AI Generation</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/questions</span>
+        </div>
+        <p id="desc-q">
+          Draft questions manually or generate context-bounded question batches using Gemini AI strictly aligned with verified syllabus topics.
+        </p>
+      </section>
+
+      <!-- Section 8 -->
+      <section id="section-mocks" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">8</span>
+            <span id="title-mocks">Full-Pattern Mock Generation & Validator</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/mock-tests</span>
+        </div>
+        <p id="desc-mocks">
+          Generate official mock examinations matching locked blueprint parameters. The automated Pattern Validation Engine validates question counts, negative marks, duration, and syllabus compliance before publication.
+        </p>
+      </section>
+
+      <!-- Section 9 -->
+      <section id="section-candidates" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">9</span>
+            <span id="title-cand">Candidate Management & Attempt Audits</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/candidates</span>
+        </div>
+        <p id="desc-cand">
+          Inspect candidate attempt transcripts (Attempt 1, Attempt 2...), chosen answers, revision history, question time spent, and scorecard evaluations.
+        </p>
+      </section>
+
+      <!-- Section 10 -->
+      <section id="section-logs" class="step-card">
+        <div class="step-header">
+          <div class="step-title">
+            <span class="step-number">10</span>
+            <span id="title-logs">Audit Logs, Analytics & Settings</span>
+          </div>
+          <span class="route-badge">/[locale]/admin/audit-logs</span>
+        </div>
+        <p id="desc-logs">
+          Review immutable administrative audit logs capturing user IDs, timestamps, IP addresses, and change diffs.
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <p>© 2026 ExamPattern AI — Verified Official Blueprint Mock Testing Platform. All Rights Reserved.</p>
+  </footer>
+
+  <script>
+    const translations = {
+      en: {
+        heroTitle: "Administrator Application Tour & Operating Guide",
+        heroDesc: "Authoritative walkthrough of the ExamPattern AI console. Understand document verification, blueprint lifecycle state machines, controlled AI generation, and candidate attempt audits.",
+        titleCore: "1. Core Product Principle",
+        descCore: "ExamPattern AI follows a strict hierarchy where official exam blueprints verified by human administrators serve as the single source of truth. AI is never the final authority for question counts, negative marking rates, or durations.",
+        warnTitle1: "Authority Rule",
+        warnDesc1: "Once an exam blueprint reaches the LOCKED state, it is permanently immutable. Any official notification corrigendum must spawn a new distinct version.",
+        titleLogin: "2. Admin Authentication & Session Security",
+        loginStep1: "Navigate to the login portal (/en/login or /hi/login).",
+        loginStep2: "Enter your assigned administrator email address and secure password.",
+        loginStep3: "Submit the form. Upon authentication, you are redirected to /admin/dashboard.",
+        titleExams: "3. Exam & Version Management",
+        examStep1: "Open Exams & Versions menu in the sidebar.",
+        examStep2: "Click Create Exam and enter exam name, code, category, and conducting authority.",
+        examStep3: "Create a distinct Exam Version (e.g., '2026 Regular Notification').",
+        titleDocs: "4. Official Documents & Verification",
+        docStep1: "Upload official advertisement and syllabus PDFs to secure local storage.",
+        docStep2: "Trigger Gemini AI Document Extraction to extract pattern and syllabus nodes.",
+        docStep3: "Perform human verification and click Verify Document.",
+        titleSyl: "5. Syllabus Hierarchy & Tree Selector",
+        descSyl: "Configure sections and topics with full tree navigation, 'Select All', and parent-child cascades. Every question created or generated maps to a verified syllabus node.",
+        titleBp: "6. Blueprint Configuration & Locking",
+        descBp: "Define total question counts, section question breakdown, marks per item, duration in minutes, and negative marking rates. Once verified, click Lock Blueprint.",
+        titleQ: "7. Question Bank & Controlled AI Generation",
+        descQ: "Draft questions manually or generate context-bounded question batches using Gemini AI strictly aligned with verified syllabus topics.",
+        titleMocks: "8. Full-Pattern Mock Generation & Validator",
+        descMocks: "Generate official mock examinations matching locked blueprint parameters. The automated Pattern Validation Engine validates question counts, negative marks, duration, and syllabus compliance before publication.",
+        titleCand: "9. Candidate Management & Attempt Audits",
+        descCand: "Inspect candidate attempt transcripts (Attempt 1, Attempt 2...), chosen answers, revision history, question time spent, and scorecard evaluations.",
+        titleLogs: "10. Audit Logs, Analytics & Settings",
+        descLogs: "Review immutable administrative audit logs capturing user IDs, timestamps, IP addresses, and change diffs."
+      },
+      hi: {
+        heroTitle: "व्यवस्थापक एप्लिकेशन टूर एवं संचालन मार्गदर्शिका",
+        heroDesc: "ExamPattern AI एडमिन कंसोल का आधिकारिक वॉकथ्रू। दस्तावेज़ सत्यापन, ब्लूप्रिंट जीवन चक्र, नियंत्रित एआई जनरेशन और अभ्यर्थी प्रयासों के ऑडिट को समझें।",
+        titleCore: "1. मुख्य उत्पाद सिद्धांत",
+        descCore: "ExamPattern AI एक सख्त पदानुक्रम का पालन करता है जहां मानव व्यवस्थापकों द्वारा सत्यापित आधिकारिक परीक्षा ब्लूप्रिंट ही सत्य का एकमात्र स्रोत होते हैं। AI कभी भी प्रश्नों की संख्या, नकारात्मक अंकन या अवधि का अंतिम प्राधिकारी नहीं होता।",
+        warnTitle1: "प्राधिकरण नियम",
+        warnDesc1: "एक बार परीक्षा ब्लूप्रिंट 'LOCKED' स्थिति में पहुंचने के बाद हमेशा के लिए अपरिवर्तनीय हो जाता है। किसी भी नए संशोधन के लिए नया संस्करण बनाया जाना आवश्यक है।",
+        titleLogin: "2. एडमिन प्रमाणीकरण और सत्र सुरक्षा",
+        loginStep1: "लॉगिन पोर्टल (/en/login या /hi/login) पर जाएं।",
+        loginStep2: "अपना निर्धारित व्यवस्थापक ईमेल और सुरक्षित पासवर्ड दर्ज करें।",
+        loginStep3: "फ़ॉर्म सबमिट करें। प्रमाणीकरण के बाद आपको /admin/dashboard पर पुनर्निर्देशित किया जाएगा।",
+        titleExams: "3. परीक्षा और संस्करण प्रबंधन",
+        examStep1: "साइडबार में परीक्षा और संस्करण मेनू खोलें।",
+        examStep2: "Create Exam पर क्लिक करें और परीक्षा का नाम, कोड, श्रेणी और संस्था दर्ज करें।",
+        examStep3: "एक विशिष्ट परीक्षा संस्करण बनाएं (उदा. '2026 Regular Notification')।",
+        titleDocs: "4. आधिकारिक दस्तावेज़ और सत्यापन",
+        docStep1: "आधिकारिक विज्ञापन और पाठ्यक्रम पीडीएफ को सुरक्षित स्थानीय स्टोरेज में अपलोड करें।",
+        docStep2: "पैटर्न और पाठ्यक्रम निकालने के लिए जेमिनी एआई एक्सट्रैक्शन प्रारंभ करें।",
+        docStep3: "मानवीय समीक्षा पूरी करें और Verify Document पर क्लिक करें।",
+        titleSyl: "5. पाठ्यक्रम पदानुक्रम और ट्री चयनकर्ता",
+        descSyl: "पूर्ण ट्री नेविगेशन, 'Select All' और पैरेंट-चाइल्ड कैस्केड के साथ खंड और विषय प्रबंधित करें। प्रत्येक प्रश्न सत्यापित पाठ्यक्रम नोड से जुड़ा होता है।",
+        titleBp: "6. ब्लूप्रिंट कॉन्फ़िगरेशन और लॉकिंग",
+        descBp: "कुल प्रश्नों की संख्या, खंड-वार विभाजन, प्रति प्रश्न अंक, अवधि और नकारात्मक दर निर्धारित करें। सत्यापन के बाद Lock Blueprint पर क्लिक करें।",
+        titleQ: "7. प्रश्न बैंक और नियंत्रित एआई निर्माण",
+        descQ: "मैन्युअल रूप से प्रश्न बनाएं या सत्यापित पाठ्यक्रम विषयों से जुड़े जेमिनी एआई द्वारा संदर्भ-सीमित प्रश्न बैच उत्पन्न करें।",
+        titleMocks: "8. फुल-पैटर्न मॉक जनरेशन और सत्यापन",
+        descMocks: "लॉक किए गए ब्लूप्रिंट नियमों के अनुसार आधिकारिक मॉक टेस्ट बनाएं। स्वचालित सत्यापन इंजन प्रकाशन से पूर्व 100% अनुपालन सुनिश्चित करता है।",
+        titleCand: "9. अभ्यर्थी प्रबंधन और प्रयास ऑडिट",
+        descCand: "अभ्यर्थी के सभी प्रयासों (Attempt 1, 2...), चुने गए उत्तरों, संशोधन इतिहास और स्कोरकार्ड का विस्तृत निरीक्षण करें।",
+        titleLogs: "10. ऑडिट लॉग्स, विश्लेषण और सेटिंग्स",
+        descLogs: "उपयोगकर्ता आईडी, समय, आईपी पते और परिवर्तन विवरण को रिकॉर्ड करने वाले अपरिवर्तनीय प्रशासनिक ऑडिट लॉग देखें।"
+      }
+    };
+
+    function setLanguage(lang) {
+      document.getElementById("btn-en").classList.toggle("active", lang === "en");
+      document.getElementById("btn-hi").classList.toggle("active", lang === "hi");
+      const dict = translations[lang];
+
+      document.getElementById("hero-title").innerText = dict.heroTitle;
+      document.getElementById("hero-desc").innerText = dict.heroDesc;
+      document.getElementById("title-core").innerText = dict.titleCore;
+      document.getElementById("desc-core").innerText = dict.descCore;
+      document.getElementById("warn-title-1").innerText = dict.warnTitle1;
+      document.getElementById("warn-desc-1").innerText = dict.warnDesc1;
+      document.getElementById("title-login").innerText = dict.titleLogin;
+      document.getElementById("login-step-1").innerText = dict.loginStep1;
+      document.getElementById("login-step-2").innerText = dict.loginStep2;
+      document.getElementById("login-step-3").innerText = dict.loginStep3;
+      document.getElementById("title-exams").innerText = dict.titleExams;
+      document.getElementById("exam-step-1").innerText = dict.examStep1;
+      document.getElementById("exam-step-2").innerText = dict.examStep2;
+      document.getElementById("exam-step-3").innerText = dict.examStep3;
+      document.getElementById("title-docs").innerText = dict.titleDocs;
+      document.getElementById("doc-step-1").innerText = dict.docStep1;
+      document.getElementById("doc-step-2").innerText = dict.docStep2;
+      document.getElementById("doc-step-3").innerText = dict.docStep3;
+      document.getElementById("title-syl").innerText = dict.titleSyl;
+      document.getElementById("desc-syl").innerText = dict.descSyl;
+      document.getElementById("title-bp").innerText = dict.titleBp;
+      document.getElementById("desc-bp").innerText = dict.descBp;
+      document.getElementById("title-q").innerText = dict.titleQ;
+      document.getElementById("desc-q").innerText = dict.descQ;
+      document.getElementById("title-mocks").innerText = dict.titleMocks;
+      document.getElementById("desc-mocks").innerText = dict.descMocks;
+      document.getElementById("title-cand").innerText = dict.titleCand;
+      document.getElementById("desc-cand").innerText = dict.descCand;
+      document.getElementById("title-logs").innerText = dict.titleLogs;
+      document.getElementById("desc-logs").innerText = dict.descLogs;
+    }
+  </script>
+</body>
+</html>
