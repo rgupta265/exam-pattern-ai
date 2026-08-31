@@ -64,9 +64,14 @@ pnpm-debug.log*
 /test-results
 /blob-report
 
-# OS Generated Files
+# OS Generated Files & Keys
 .DS_Store
 *.pem
+*.key
+*.pub
+cpanel_deploy_key*
+id_rsa*
+id_ed25519*
 Thumbs.db
 
 # IDE & Editor Settings
