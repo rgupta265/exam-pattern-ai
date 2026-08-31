@@ -70,7 +70,7 @@ Official Exam Documents (PDF / Advertisement)
 
 ### Technology Stack
 * **Framework:** Next.js 16.3.3 (App Router, Turbopack, React Server Components by default)
-* **Edge Security & Routing:** Next.js 16 Proxy (`src/proxy.ts` convention)
+* **Edge Security & Routing:** Next.js 16 Proxy (`src/proxy.ts` / `src/middleware.ts`)
 * **Language:** TypeScript 5.7.3 (Strict Mode enabled, zero implicit `any`)
 * **UI & Styling:** React 19, Tailwind CSS 3.4, Lucide React
 * **Database:** MySQL 8.0
@@ -81,10 +81,10 @@ Official Exam Documents (PDF / Advertisement)
 * **Testing:** Vitest 3.2 (Unit & Integration), Playwright 1.50 (E2E)
 
 ### Prerequisites
-Before running ExamPattern AI locally, ensure your system has:
-1. **Node.js:** `v20.x` or `v22.x` (LTS recommended)
+Before running ExamPattern AI, ensure your environment satisfies:
+1. **Node.js:** `v20.x` or `v22.x` (Node.js 22 LTS recommended)
 2. **npm:** `v10.x` or higher
-3. **MySQL Server:** `v8.0` or higher running locally on port `3306`
+3. **MySQL Server:** `v8.0` or higher running on port `3306` (or socket)
 4. **Git:** `v2.x` or higher
 5. **Google Gemini API Key:** From [Google AI Studio](https://aistudio.google.com/)
 
@@ -117,13 +117,13 @@ cp .env.example .env.local
 
 ## 5. Environment Variables Reference
 
-Configure `.env.local` using the following reference table:
+Configure `.env.local` or production server environment variables using the following reference table:
 
 | Variable | Required | Default / Example | Purpose |
 |---|---|---|---|
 | `NODE_ENV` | Yes | `development` | Runtime environment (`development`, `production`, `test`) |
 | `PORT` | No | `3000` | HTTP port for local development server |
-| `APP_URL` | Yes | `http://localhost:3000` | Base application URL |
+| `APP_URL` | Yes | `http://localhost:3000` | Base application URL (`https://aiexam.rupakgupta.com` in production) |
 | `NEXT_PUBLIC_APP_URL` | Yes | `http://localhost:3000` | Publicly exposed application URL |
 | `DB_HOST` | Yes | `127.0.0.1` | MySQL database server host |
 | `DB_PORT` | Yes | `3306` | MySQL database server port (1–65535) |
@@ -156,53 +156,48 @@ Configure `.env.local` using the following reference table:
 
 ## 6. MySQL 8 Database Setup & Configuration
 
-ExamPattern AI connects to MySQL 8 using **separately configured environment variables** (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`). The application dynamically constructs and validates the connection safely on the server side. Developers do **not** need to manually maintain a composite `DATABASE_URL` string.
+ExamPattern AI connects to MySQL 8 using **separately configured environment variables** (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`). The application dynamically constructs and validates the connection safely on the server side without exposing credentials.
 
 ### Local Development MySQL Setup:
 1. **Start MySQL 8 Server** on your local machine.
-2. **Create Database and Developer User (Local Development Example):**
+2. **Create Database and Developer User:**
    ```sql
-   -- LOCAL DEVELOPMENT EXAMPLE ONLY
    CREATE DATABASE IF NOT EXISTS exampattern_ai CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-   -- Create local developer user
    CREATE USER IF NOT EXISTS 'exam_user'@'localhost' IDENTIFIED BY 'your_secure_password';
-
-   -- Grant all privileges on local database
    GRANT ALL PRIVILEGES ON exampattern_ai.* TO 'exam_user'@'localhost';
    FLUSH PRIVILEGES;
    ```
-3. Configure `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, and `DB_PASSWORD` in your `.env.local` or `.env`.
+3. Configure `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, and `DB_PASSWORD` in your `.env.local`.
 
 ---
 
 ## 7. Prisma Setup & Migrations
 
-Execute the following npm scripts to initialize the database schema and generate Prisma Client with separate `DB_*` variables:
+Execute the following npm scripts to initialize the database schema and generate Prisma Client:
 
 ```bash
 # 1. Generate Prisma Client
 npm run prisma:generate
 
-# 2. Push Database Schema / Run Migrations (Local Development)
+# 2. Push Database Schema / Run Migrations
 npm run prisma:push
-# (or: npm run prisma:migrate)
+# (or in production: npx prisma migrate deploy)
 
-# 3. Seed Initial Exam Categories & Super Admin Account
+# 3. Seed Initial Roles, Blueprint & Super Admin Account
 npm run prisma:seed
 
-# 4. Open Prisma Studio GUI (Optional database browser)
-npx prisma studio
+# 4. Open Prisma Studio GUI (Optional database inspector)
+npm run prisma:studio
 ```
 
 > [!IMPORTANT]
-> **Admin-Only Seed Policy:** The seeding process initializes only the Super Admin account (configured via `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in `.env.local`). **Zero candidate accounts** are seeded. Candidate accounts are created exclusively through public registration (`/register`) with enforced `CANDIDATE` role isolation.
+> **Admin-Only Seed Policy:** Seeding populates only the Super Admin account (configured via `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in `.env.local`). **Zero candidate accounts** are seeded.
 
 ---
 
 ## 8. Local Storage Setup
 
-ExamPattern AI uses a local filesystem storage abstraction (`LocalStorageProvider`) to avoid paid cloud storage dependencies:
+ExamPattern AI uses a local filesystem storage abstraction (`LocalStorageProvider`) avoiding paid cloud dependencies:
 
 ```
 storage/
@@ -217,7 +212,7 @@ storage/
     └── avatars/               # User profile pictures
 ```
 
-The system automatically initializes these folders on startup. Ensure the application process has write permissions to `./storage`. Private files are never placed in the Next.js `public/` folder and can only be streamed through authenticated/authorized API endpoints with HTTP 206 range streaming support.
+Private files are never stored in the Next.js `public/` directory and can only be accessed through authenticated, authorized route handlers with HTTP 206 streaming support.
 
 ---
 
@@ -225,12 +220,24 @@ The system automatically initializes these folders on startup. Ensure the applic
 
 1. Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
 2. Set `GEMINI_API_KEY="your-api-key"` in `.env.local`.
-3. **AI Scope Restriction:** Gemini calls execute strictly server-side through `gemini-question.service.ts` and `gemini-document.service.ts`. The AI is strictly bounded by the selected exam context, verified documents, and locked syllabus topics.
+3. **AI Scope Boundary:** Gemini calls execute strictly server-side through `gemini-question.service.ts` and `gemini-document.service.ts`. The AI is strictly bounded by the selected exam context, verified documents, and locked syllabus topics.
 
 ---
 
-## 10. Starting the Application
+## 10. Email & SMTP Configuration
 
+Configure transactional email delivery for candidate registration OTPs, email verifications, and password reset codes:
+* `EMAIL_PROVIDER="smtp"` (or `console` for local debugging)
+* `EMAIL_HOST="smtp.gmail.com"`
+* `EMAIL_PORT=587`
+* `EMAIL_USER="your-email@gmail.com"`
+* `EMAIL_PASSWORD="your-smtp-app-password"`
+
+---
+
+## 11. Starting the Application (Development & Production)
+
+### Local Development:
 ```bash
 # Start Next.js Development Server (with Turbopack)
 npm run dev
@@ -240,9 +247,30 @@ Open your browser and navigate to:
 * **Canonical English Portal:** [http://localhost:3000/en](http://localhost:3000/en)
 * **Canonical Hindi Portal:** [http://localhost:3000/hi](http://localhost:3000/hi)
 
+### Production Build & Run:
+```bash
+# 1. Compile production build
+npm run build
+
+# 2. Start production server
+npm run start
+# (or via Phusion Passenger: node app.js)
+```
+
 ---
 
-## 11. Route Reference Table
+## 12. Production Deployment (cPanel & Passenger)
+
+ExamPattern AI is architected for production hosting on **cPanel with Phusion Passenger, Node.js 22, and MySQL 8**:
+
+* **Domain:** `https://aiexam.rupakgupta.com`
+* **Startup Wrapper:** `app.js` (Passenger entrypoint)
+* **Automated Deployment:** `deploy.sh` & `.github/workflows/deploy.yml`
+* **Step-by-Step Documentation:** See [`docs/CPANEL_DEPLOYMENT.md`](./docs/CPANEL_DEPLOYMENT.md) for the complete 19-step setup, database configuration, SSH deployment, and rollback procedures.
+
+---
+
+## 13. Route Reference Table
 
 | Route / Section | English URL | Hindi URL | Access Role |
 |---|---|---|---|
@@ -271,7 +299,7 @@ Open your browser and navigate to:
 
 ---
 
-## 12. Application Tours & Video Storyboards
+## 14. Application Tours & Video Storyboards
 
 ExamPattern AI provides comprehensive interactive application tours for onboarding new administrators and candidates:
 
@@ -290,11 +318,10 @@ Open directly in any modern browser without running a server:
 
 ---
 
-## 13. Database Management & Maintenance (Backup, Clean & Seed)
+## 15. Database Management & Maintenance (Backup, Clean & Seed)
 
 The platform provides a secure, server-side Admin-only Database Management console at `/[locale]/admin/database`:
 
-### Core Maintenance Capabilities:
 1. **Infrastructure & Connection Status:** Real-time MySQL 8 health check, database name, masked host, port, active tables count, and estimated live rows.
 2. **Server-Side MySQL 8 Backups:** Generates full standard `.sql` backup dumps stored privately in `./storage/private/backups/`. Features one-click creation, metadata tracking, secure authorized streaming download, and deletion.
 3. **Controlled Data Cleaning:** Safely resets candidate accounts, attempts, results, and practice drills for testing. Super Admin and Admin accounts are strictly protected and never deleted. Requires explicit confirmation phrase (`DELETE ALL TEST DATA` in development, `CONFIRM PRODUCTION DATA RESET` in production).
@@ -303,7 +330,7 @@ The platform provides a secure, server-side Admin-only Database Management conso
 
 ---
 
-## 14. Command Reference Table
+## 16. Command Reference Table
 
 All scripts defined in `package.json`:
 
@@ -320,11 +347,38 @@ All scripts defined in `package.json`:
 | `npm run test:e2e` | Runs Playwright end-to-end browser tests |
 | `npm run prisma:generate` | Generates the Prisma Client TypeScript artifacts with modular DB config |
 | `npm run prisma:migrate` | Runs Prisma schema migrations in development mode |
+| `npm run prisma:push` | Synchronizes Prisma schema directly with the database |
+| `npm run prisma:studio` | Opens Prisma Studio visual database editor |
 | `npm run prisma:seed` | Executes database seeding script (`prisma/seed.ts`) |
+| `npm run db:refresh` | Refreshes and re-seeds development database |
 
 ---
 
-## 15. GitHub Contribution Workflow
+## 17. Troubleshooting Guide
+
+### 1. MySQL Connection Issues (`ECONNREFUSED`)
+* **Symptom:** Application fails to connect to MySQL database on startup.
+* **Resolution:** Ensure MySQL 8 service is running. Verify `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, and `DB_PASSWORD` in `.env.local` or cPanel environment variables. If using Unix sockets on cPanel, specify `DB_SOCKET_PATH=/var/lib/mysql/mysql.sock`.
+
+### 2. Prisma Client Out of Sync
+* **Symptom:** TypeScript or runtime errors regarding missing database models or columns.
+* **Resolution:** Run `npm run prisma:generate` followed by `npx prisma migrate deploy` (or `npm run prisma:push` in development).
+
+### 3. Locale Redirection Loop on `/`
+* **Symptom:** Visiting `/` results in excessive redirects.
+* **Resolution:** Verify `src/middleware.ts` exists and correctly exports `{ middleware, config }` from `./proxy`. Clear browser cookies or verify `NEXT_LOCALE` cookie value.
+
+### 4. Storage Directory Permission Errors (`EACCES`)
+* **Symptom:** File uploads or database backups fail with permission errors.
+* **Resolution:** Ensure the Node.js process has write access to `./storage`. On Linux/cPanel, execute `chmod -R 750 ./storage` (or your configured `STORAGE_PATH`).
+
+### 5. Passenger Application Not Updating
+* **Symptom:** Newly deployed changes are not visible on `https://aiexam.rupakgupta.com`.
+* **Resolution:** Touch the restart file via `mkdir -p tmp && touch tmp/restart.txt` or restart the application from cPanel Setup Node.js App.
+
+---
+
+## 18. GitHub Contribution Workflow
 
 1. Create a feature branch from `main`:
    ```bash
@@ -341,13 +395,13 @@ All scripts defined in `package.json`:
    ```
 4. Commit your changes with clear, semantic commit messages:
    ```bash
-   git commit -m "feat(exam): implement full examination retake mode"
+   git commit -m "feat(exam): implement production deployment foundation"
    ```
 5. Push to your branch and open a Pull Request.
 
 ---
 
-## 16. Security Guidelines
+## 19. Security Guidelines
 
 * **Server-Side AI Abstraction:** All Google Gemini API interactions execute exclusively on the server. Never expose API keys to the browser.
 * **Role-Based Access Control:** Every API endpoint and server action validates session identity and granular permissions (`EXAM_CREATE`, `BLUEPRINT_LOCK`, `MOCK_PUBLISH`, etc.).
@@ -356,6 +410,6 @@ All scripts defined in `package.json`:
 
 ---
 
-## 17. License & Copyright
+## 20. License & Copyright
 
 © 2026 **ExamPattern AI**. Built with Next.js 16 App Router, MySQL 8, Prisma ORM, and Google Gemini AI. All Rights Reserved.

@@ -8,6 +8,21 @@ import { SUPPORTED_LOCALES, DEFAULT_LOCALE, Locale } from "./lib/i18n";
 const SECRET_KEY = new TextEncoder().encode(authConfig.jwtSecret);
 
 export async function proxy(request: NextRequest) {
+  // Helper to attach standard security headers
+  const attachSecurityHeaders = (res: NextResponse) => {
+    res.headers.set("X-Content-Type-Options", "nosniff");
+    res.headers.set("X-Frame-Options", "SAMEORIGIN");
+    res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.headers.set("X-XSS-Protection", "1; mode=block");
+    return res;
+  };
+
+  // If already processed and rewritten internally, pass through
+  if (request.headers.has("x-locale")) {
+    return attachSecurityHeaders(NextResponse.next());
+  }
+
   const { pathname, search } = request.nextUrl;
 
   // 1. Detect Locale Prefix (e.g., /en/..., /hi/..., /en, /hi)
@@ -56,21 +71,17 @@ export async function proxy(request: NextRequest) {
     internalPath.startsWith("/api/admin") ||
     internalPath.startsWith("/api/candidate");
 
-  // Helper to attach standard security headers
-  const attachSecurityHeaders = (res: NextResponse) => {
-    res.headers.set("X-Content-Type-Options", "nosniff");
-    res.headers.set("X-Frame-Options", "SAMEORIGIN");
-    res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    res.headers.set("X-XSS-Protection", "1; mode=block");
-    return res;
-  };
-
   // Skip auth checks for public routes and static assets
   if (!isAdminRoute && !isCandidateRoute && !isProtectedApiRoute) {
     if (hasLocalePrefix) {
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set("x-locale", locale);
       const rewriteUrl = new URL(internalPath + search, request.url);
-      const res = NextResponse.rewrite(rewriteUrl);
+      const res = NextResponse.rewrite(rewriteUrl, {
+        request: {
+          headers: requestHeaders,
+        },
+      });
       res.cookies.set("NEXT_LOCALE", locale, { path: "/", maxAge: 31536000, sameSite: "lax" });
       res.headers.set("x-locale", locale);
       return attachSecurityHeaders(res);
