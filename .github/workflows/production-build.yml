@@ -68,19 +68,68 @@ jobs:
           DB_USERNAME: "build_dummy_user"
           DB_PASSWORD: "build_dummy_password"
 
-      - name: Bundle Standalone Production Assets
+      - name: Bundle and Validate Standalone Production Assets
         run: |
-          echo "Packaging static assets into standalone output..."
+          echo "============================================================"
+          echo "📦 Packaging Standalone Production Bundle..."
+          echo "============================================================"
+
+          # 1. Verify build output prerequisites
+          if [ ! -f ".next/standalone/server.js" ]; then
+            echo "❌ ERROR: .next/standalone/server.js not found!"
+            exit 1
+          fi
+
+          if [ ! -d ".next/static" ]; then
+            echo "❌ ERROR: .next/static directory not found!"
+            exit 1
+          fi
+
+          # 2. Copy static assets to .next/standalone/.next/static/
+          echo "Copying .next/static to .next/standalone/.next/static..."
           mkdir -p .next/standalone/.next
           cp -r .next/static .next/standalone/.next/
+
+          # 3. Copy public directory if present or create if absent
           if [ -d "public" ]; then
+            echo "Copying public directory to .next/standalone/public..."
             cp -r public .next/standalone/
+          else
+            echo "Creating public directory in .next/standalone/public..."
+            mkdir -p .next/standalone/public
           fi
-          # Also include prisma schema and seed engine in standalone bundle for migrations
+
+          # 4. Copy Prisma schema & migrations (for database maintenance)
+          echo "Copying prisma schema & migrations..."
           mkdir -p .next/standalone/prisma
-          cp -r prisma/* .next/standalone/prisma/ 2>/dev/null || true
-          cp app.js .next/standalone/ 2>/dev/null || true
-          cp package.json .next/standalone/ 2>/dev/null || true
+          cp -r prisma/* .next/standalone/prisma/
+
+          # 5. Copy Passenger startup wrapper
+          if [ -f "app.js" ]; then
+            cp app.js .next/standalone/
+          fi
+
+          # 6. Explicit validation checks (fail immediately if any requirement is missing)
+          echo ""
+          echo "🔍 Validating Standalone Bundle Structure..."
+          test -f .next/standalone/server.js || { echo "❌ Missing .next/standalone/server.js"; exit 1; }
+          test -f .next/standalone/package.json || { echo "❌ Missing .next/standalone/package.json"; exit 1; }
+          test -d .next/standalone/.next/static || { echo "❌ Missing .next/standalone/.next/static"; exit 1; }
+          test -d .next/standalone/node_modules || { echo "❌ Missing .next/standalone/node_modules"; exit 1; }
+          test -d .next/standalone/messages || { echo "❌ Missing .next/standalone/messages"; exit 1; }
+          test -d .next/standalone/prisma || { echo "❌ Missing .next/standalone/prisma"; exit 1; }
+          test -d .next/standalone/public || { echo "❌ Missing .next/standalone/public"; exit 1; }
+
+          echo "✅ Standalone bundle validation PASSED!"
+          echo ""
+          echo "📂 Standalone Root Contents:"
+          ls -la .next/standalone/
+          echo ""
+          echo "📂 Standalone .next Contents:"
+          ls -la .next/standalone/.next/
+          echo ""
+          echo "📂 Standalone .next/static Contents:"
+          ls -la .next/standalone/.next/static/
 
       - name: Upload Standalone Production Artifact
         uses: actions/upload-artifact@v4
@@ -91,5 +140,6 @@ jobs:
             app.js
             deploy.sh
             docs/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: error

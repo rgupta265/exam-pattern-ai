@@ -8,7 +8,7 @@ on:
 
 jobs:
   # ============================================================================
-  # 1. CI Validation Pipeline (All checks must pass before deployment)
+  # 1. CI Validation Pipeline & Next.js Standalone Build
   # ============================================================================
   ci:
     name: Test & Build Quality Gates
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js 22 LTS
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -30,6 +30,13 @@ jobs:
 
       - name: Generate Prisma Client
         run: npm run prisma:generate
+        env:
+          NODE_ENV: production
+          DB_HOST: "127.0.0.1"
+          DB_PORT: "3306"
+          DB_NAME: "build_dummy_db"
+          DB_USERNAME: "build_dummy_user"
+          DB_PASSWORD: "build_dummy_password"
 
       - name: Check Translation Parity
         run: npm run check-translations
@@ -41,13 +48,53 @@ jobs:
         run: npm run lint
 
       - name: Run Test Suite (Vitest)
-        run: npm run test
+        run: npm test
 
       - name: Build Next.js Application
         run: npm run build
         env:
           NODE_ENV: production
           NEXT_TELEMETRY_DISABLED: "1"
+          DB_HOST: "127.0.0.1"
+          DB_PORT: "3306"
+          DB_NAME: "build_dummy_db"
+          DB_USERNAME: "build_dummy_user"
+          DB_PASSWORD: "build_dummy_password"
+
+      - name: Bundle and Validate Standalone Production Assets
+        run: |
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/
+          if [ -d "public" ]; then
+            cp -r public .next/standalone/
+          else
+            mkdir -p .next/standalone/public
+          fi
+          mkdir -p .next/standalone/prisma
+          cp -r prisma/* .next/standalone/prisma/
+          if [ -f "app.js" ]; then
+            cp app.js .next/standalone/
+          fi
+          test -f .next/standalone/server.js
+          test -f .next/standalone/package.json
+          test -d .next/standalone/.next/static
+          test -d .next/standalone/node_modules
+          test -d .next/standalone/messages
+          test -d .next/standalone/prisma
+          test -d .next/standalone/public
+
+      - name: Upload Standalone Production Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exampattern-standalone-artifact
+          path: |
+            .next/standalone/
+            app.js
+            deploy.sh
+            docs/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
 
   # ============================================================================
   # 2. Automated cPanel Deployment via SSH
