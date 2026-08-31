@@ -57,7 +57,17 @@ echo ""
 echo "🏗️  [5/6] Building Next.js production bundle..."
 npm run build
 
-# 8. Trigger Passenger application restart
+# 8. Ensure standalone static assets are properly placed
+if [ -d ".next/standalone" ]; then
+  echo "📦 Linking static assets into standalone production output..."
+  mkdir -p .next/standalone/.next
+  cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+  if [ -d "public" ]; then
+    cp -r public .next/standalone/ 2>/dev/null || true
+  fi
+fi
+
+# 9. Trigger Passenger application restart
 echo ""
 echo "🔄 [6/6] Restarting Phusion Passenger application..."
 mkdir -p tmp

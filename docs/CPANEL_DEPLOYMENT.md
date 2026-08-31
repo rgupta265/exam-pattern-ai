@@ -15,26 +15,21 @@
    [GitHub Repository]
           │  Trigger on push to 'main'
           ▼
-   [GitHub Actions CI Pipeline]
+   [GitHub Actions CI Pipeline (Node 22)]
       ├── 1. npm ci
       ├── 2. npm run prisma:generate
       ├── 3. npm run check-translations
       ├── 4. npm run typecheck
       ├── 5. npm run lint
       ├── 6. npm test (Vitest)
-      └── 7. npm run build
+      ├── 7. npm run build (output: "standalone")
+      └── 8. Package & Upload Standalone Artifact (.next/standalone + static + public)
           │  (On Success)
           ▼
-   [SSH Deployment Trigger]
-          │  Executes deploy.sh via SSH
-          ▼
-   [cPanel Host (aiexam.rupakgupta.com)]
-      ├── git reset --hard origin/main
-      ├── npm ci
-      ├── npm run prisma:generate
-      ├── npx prisma migrate deploy
-      ├── npm run build
-      └── touch tmp/restart.txt (Phusion Passenger Restart)
+   [cPanel Production Host (aiexam.rupakgupta.com)]
+      ├── Pulls or unpacks pre-built Standalone Production Bundle
+      ├── node server.js (or Phusion Passenger via app.js)
+      └── Zero heavy build execution on cPanel (bypasses CloudLinux EAGAIN worker limits)
           │
           ▼
    [Live Production Application]
@@ -242,9 +237,25 @@ npx tsx prisma/seed.ts
 
 ---
 
-### Step 13: Build Next.js Production Bundle
+### Step 13: Build Next.js Production Bundle (Standalone Output)
+Next.js compiles with `output: "standalone"`, creating a minimal, self-contained production bundle at `.next/standalone/`:
 ```bash
 npm run build
+```
+
+The standalone output bundles all traced dependencies:
+* `.next/standalone/server.js` (Production HTTP server entrypoint)
+* `.next/standalone/node_modules/` (Pruned production dependencies)
+* `.next/standalone/.next/` (Compiled server chunks)
+
+To ensure static assets and public icons are served:
+```bash
+# Link static files into standalone directory
+mkdir -p .next/standalone/.next
+cp -r .next/static .next/standalone/.next/
+if [ -d "public" ]; then
+  cp -r public .next/standalone/
+fi
 ```
 
 ---
@@ -334,6 +345,7 @@ touch tmp/restart.txt
 | **500 Internal Server Error on Startup** | Missing or incorrect `.env` variables | Check `error.log` or Passenger log in `stderr.log`. Verify `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `AUTH_SECRET`. |
 | **Prisma Connection Refused (`ECONNREFUSED 127.0.0.1:3306`)** | MySQL is listening on localhost or socket | Verify MySQL service is running. If cPanel uses a socket, set `DB_SOCKET_PATH=/var/lib/mysql/mysql.sock` in `.env`. |
 | **File Upload Permission Denied (`EACCES`)** | Incorrect storage folder permissions | Run `chmod -R 750 /home/rupakgup/exam-pattern-storage` and ensure owner is `rupakgup`. |
-| **Out of Memory during `npm run build`** | Resource limits on shared cPanel hosting | Build locally or in GitHub Actions, or increase Node memory: `NODE_OPTIONS="--max-old-space-size=2048" npm run build`. |
+| **Error: spawn ... node EAGAIN** | CloudLinux NPROC process table limit triggered during Next.js worker compilation | Next.js is configured with `output: "standalone"`. Run the heavy build in GitHub Actions (CI) and download/deploy the pre-built `.next/standalone` bundle to cPanel, or run Passenger via `app.js` without running `npm run build` on the server. |
+| **Out of Memory during `npm run build`** | Resource limits on shared cPanel hosting | Build locally or in GitHub Actions CI, which packages `.next/standalone` without server memory constraints. |
 | **Passenger not reloading updated code** | `restart.txt` not touched or timestamp unchanged | Run `touch tmp/restart.txt` or click **Restart** in cPanel Node.js Application Manager. |
 | **Locale redirect loop on `/`** | Proxy middleware misconfiguration | Verify `src/middleware.ts` is present and exports `{ middleware, config }` from `./proxy`. |
