@@ -1,0 +1,283 @@
+﻿name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: production-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-test:
+    name: Build & Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: 3. Install dependencies
+        run: npm ci
+
+      - name: 4. Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: 5. Translation validation
+        run: npm run check-translations
+
+      - name: 6. TypeScript check
+        run: npm run typecheck
+
+      - name: 7. ESLint check
+        run: npm run lint
+
+      - name: 8. Vitest unit & integration tests
+        run: npm test
+
+      - name: 9. Next.js standalone production build
+        run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: 10. Assemble and validate standalone bundle
+        run: |
+          echo "Validating standalone build..."
+          test -f .next/standalone/server.js || { echo "❌ Missing .next/standalone/server.js"; exit 1; }
+
+          echo "Copying static assets into standalone output..."
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/static
+
+          if [ -d "public" ]; then
+            echo "Copying public directory..."
+            cp -r public .next/standalone/
+          fi
+
+          if [ -d "messages" ]; then
+            echo "Copying messages directory..."
+            cp -r messages .next/standalone/
+          fi
+
+          if [ -d "prisma" ]; then
+            echo "Copying prisma directory..."
+            cp -r prisma .next/standalone/
+          fi
+
+          if [ -f "app.js" ]; then
+            echo "Copying app.js startup wrapper..."
+            cp app.js .next/standalone/app.js
+          fi
+
+          echo "Validating final standalone bundle structure..."
+          test -f .next/standalone/server.js || { echo "❌ Validation failed: server.js missing"; exit 1; }
+          test -d .next/standalone/.next/static || { echo "❌ Validation failed: .next/static missing"; exit 1; }
+
+          echo "Packaging standalone artifact..."
+          tar -czf standalone-artifact-${{ github.sha }}.tar.gz -C .next/standalone .
+          ls -lh standalone-artifact-${{ github.sha }}.tar.gz
+
+      - name: 11. Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-artifact
+          path: standalone-artifact-${{ github.sha }}.tar.gz
+          retention-days: 1
+
+  deploy-to-cpanel:
+    name: Deploy to cPanel
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: standalone-artifact
+
+      - name: 2. Setup SSH Key & Known Hosts
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_PRIVATE_KEY }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/cpanel_key
+          chmod 600 ~/.ssh/cpanel_key
+
+          echo "Scanning SSH host keys for $CPANEL_HOST:$CPANEL_PORT..."
+          ssh-keyscan -p "$CPANEL_PORT" -H "$CPANEL_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: 3. Verify SSH Connection
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+        run: |
+          echo "Testing SSH authentication to cPanel..."
+          ssh -i ~/.ssh/cpanel_key -p "$CPANEL_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$CPANEL_USERNAME@$CPANEL_HOST" "echo 'SSH connection: PASS'"
+
+      - name: 4. Upload Artifact to cPanel
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+          CPANEL_APP_PATH: ${{ secrets.CPANEL_APP_PATH || '/home/rupakgup/aiexam.rupakgupta.com' }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          echo "Ensuring deployment directories exist on cPanel..."
+          ssh -i ~/.ssh/cpanel_key -p "$CPANEL_PORT" "$CPANEL_USERNAME@$CPANEL_HOST" "mkdir -p ${CPANEL_APP_PATH}/.deployments/${COMMIT_SHA} ${CPANEL_APP_PATH}/tmp"
+
+          echo "Transferring standalone artifact..."
+          scp -i ~/.ssh/cpanel_key -P "$CPANEL_PORT" "standalone-artifact-${COMMIT_SHA}.tar.gz" "$CPANEL_USERNAME@$CPANEL_HOST:${CPANEL_APP_PATH}/.deployments/standalone-artifact-${COMMIT_SHA}.tar.gz"
+          echo "Upload: PASS"
+
+      - name: 5. Execute Atomic Deployment on cPanel
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+          CPANEL_APP_PATH: ${{ secrets.CPANEL_APP_PATH || '/home/rupakgup/aiexam.rupakgupta.com' }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          echo "Executing remote atomic deployment..."
+          ssh -i ~/.ssh/cpanel_key -p "$CPANEL_PORT" "$CPANEL_USERNAME@$CPANEL_HOST" "bash -s" << 'EOF'
+            set -e
+            APP_PATH="${CPANEL_APP_PATH:-/home/rupakgup/aiexam.rupakgupta.com}"
+            SHA="${COMMIT_SHA}"
+            DEPLOY_DIR="${APP_PATH}/.deployments/${SHA}"
+            TAR_FILE="${APP_PATH}/.deployments/standalone-artifact-${SHA}.tar.gz"
+
+            echo "📂 Extracting artifact into ${DEPLOY_DIR}..."
+            mkdir -p "${DEPLOY_DIR}"
+            tar -xzf "${TAR_FILE}" -C "${DEPLOY_DIR}"
+            rm -f "${TAR_FILE}"
+
+            echo "🔍 Validating extracted artifact..."
+            if [ ! -f "${DEPLOY_DIR}/server.js" ]; then
+              echo "❌ Extracted artifact missing server.js" >&2
+              exit 1
+            fi
+            if [ ! -d "${DEPLOY_DIR}/.next/static" ]; then
+              echo "❌ Extracted artifact missing .next/static" >&2
+              exit 1
+            fi
+
+            echo "📦 Backing up current deployment to .deployments/PREVIOUS..."
+            if [ -d "${APP_PATH}/.next/standalone" ]; then
+              rm -rf "${APP_PATH}/.deployments/PREVIOUS"
+              mkdir -p "${APP_PATH}/.deployments/PREVIOUS"
+              cp -r "${APP_PATH}/.next/standalone/." "${APP_PATH}/.deployments/PREVIOUS/" 2>/dev/null || true
+            fi
+
+            echo "🔄 Performing atomic replacement of .next/standalone..."
+            mkdir -p "${APP_PATH}/.next/standalone_staging"
+            cp -r "${DEPLOY_DIR}/." "${APP_PATH}/.next/standalone_staging/"
+
+            rm -rf "${APP_PATH}/.next/standalone_old"
+            if [ -d "${APP_PATH}/.next/standalone" ]; then
+              mv "${APP_PATH}/.next/standalone" "${APP_PATH}/.next/standalone_old"
+            fi
+            mv "${APP_PATH}/.next/standalone_staging" "${APP_PATH}/.next/standalone"
+            rm -rf "${APP_PATH}/.next/standalone_old"
+
+            # Synchronize root app.js if present in deployment
+            if [ -f "${DEPLOY_DIR}/app.js" ]; then
+              cp "${DEPLOY_DIR}/app.js" "${APP_PATH}/app.js"
+            fi
+
+            # Clean up old deployment folders, keep latest 3 versions plus PREVIOUS
+            cd "${APP_PATH}/.deployments"
+            ls -dt [0-9a-f]* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true
+
+            echo "Deployment: PASS"
+
+            echo "🔄 Restarting Phusion Passenger..."
+            mkdir -p "${APP_PATH}/tmp"
+            touch "${APP_PATH}/tmp/restart.txt"
+            echo "Passenger restart: PASS"
+          EOF
+
+      - name: 6. Health Check & Automatic Rollback
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+          CPANEL_APP_PATH: ${{ secrets.CPANEL_APP_PATH || '/home/rupakgup/aiexam.rupakgupta.com' }}
+          HEALTH_URL: "https://aiexam.rupakgupta.com/api/health"
+          LOGIN_URL: "https://aiexam.rupakgupta.com/en/login"
+        run: |
+          echo "Waiting 10 seconds for Passenger application worker to boot..."
+          sleep 10
+
+          HEALTH_PASSED=false
+          for i in {1..6}; do
+            echo "Health check attempt $i/6: Requesting $HEALTH_URL..."
+            HTTP_STATUS=$(curl -s -o /tmp/health_response.json -w "%{http_code}" "$HEALTH_URL" || echo "000")
+            echo "HTTP Status: $HTTP_STATUS"
+
+            if [ "$HTTP_STATUS" = "200" ]; then
+              cat /tmp/health_response.json
+              echo ""
+              HEALTH_PASSED=true
+              break
+            fi
+
+            echo "Application still starting... retrying in 5 seconds."
+            sleep 5
+          done
+
+          if [ "$HEALTH_PASSED" != "true" ]; then
+            echo "❌ Health check FAILED after 6 attempts!"
+            echo "Triggering automatic rollback to PREVIOUS deployment..."
+
+            ssh -i ~/.ssh/cpanel_key -p "${CPANEL_PORT:-22}" "$CPANEL_USERNAME@$CPANEL_HOST" "bash -s" << 'ROLLBACK_EOF'
+              APP_PATH="${CPANEL_APP_PATH:-/home/rupakgup/aiexam.rupakgupta.com}"
+              if [ -d "${APP_PATH}/.deployments/PREVIOUS" ]; then
+                echo "Restoring .deployments/PREVIOUS into .next/standalone..."
+                rm -rf "${APP_PATH}/.next/standalone"
+                mkdir -p "${APP_PATH}/.next/standalone"
+                cp -r "${APP_PATH}/.deployments/PREVIOUS/." "${APP_PATH}/.next/standalone/"
+                mkdir -p "${APP_PATH}/tmp"
+                touch "${APP_PATH}/tmp/restart.txt"
+                echo "Rollback completed and Passenger restarted."
+              else
+                echo "No PREVIOUS deployment found for rollback."
+              fi
+          ROLLBACK_EOF
+            exit 1
+          fi
+
+          echo "Health check: PASS"
+
+          echo "Verifying canonical route $LOGIN_URL..."
+          LOGIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$LOGIN_URL" || echo "000")
+          echo "Login Route HTTP Status: $LOGIN_STATUS"
+
+          echo ""
+          echo "=================================================="
+          echo "Build: PASS"
+          echo "Tests: PASS"
+          echo "Artifact: PASS"
+          echo "SSH connection: PASS"
+          echo "Upload: PASS"
+          echo "Deployment: PASS"
+          echo "Passenger restart: PASS"
+          echo "Health check: PASS"
+          echo "=================================================="
+          echo "Deployment successful"
+          echo "Commit: ${{ github.sha }}"
+          echo "URL: https://aiexam.rupakgupta.com"
+          echo "=================================================="

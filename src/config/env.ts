@@ -35,6 +35,7 @@ const envSchema = z.object({
 
   // Google Gemini AI Engine
   GEMINI_API_KEY: z.string().optional().default(""),
+  GEMINI_MODEL: z.string().optional().default("gemini-1.5-flash"),
 
   // Email Configuration
   EMAIL_PROVIDER: z.enum(["smtp", "console", "resend"]).default("smtp"),

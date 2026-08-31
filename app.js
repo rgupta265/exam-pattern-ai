@@ -8,6 +8,17 @@
 const fs = require("fs");
 const path = require("path");
 
+// Load .env from application root if present
+const rootEnvPath = path.join(__dirname, ".env");
+if (fs.existsSync(rootEnvPath)) {
+  try {
+    const dotenv = require("dotenv");
+    dotenv.config({ path: rootEnvPath });
+  } catch {
+    // If dotenv module is not in global scope, environment variables are already in process.env
+  }
+}
+
 const standaloneServerPath = path.join(__dirname, ".next", "standalone", "server.js");
 
 if (fs.existsSync(standaloneServerPath)) {

@@ -24,7 +24,7 @@ export class GeminiProvider {
       return this.generateSimulatedExtraction(prompt);
     }
 
-    const model = options?.model || "gemini-2.0-flash";
+    const model = options?.model || process.env.GEMINI_MODEL || "gemini-1.5-flash";
     const url = `${this.baseUrl}/models/${model}:generateContent?key=${this.apiKey}`;
 
     const requestBody = {

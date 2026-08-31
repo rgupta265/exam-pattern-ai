@@ -1,142 +1,210 @@
-# ExamPattern AI — cPanel & Passenger Production Deployment Guide
+# ExamPattern AI — Complete Automated Production Deployment Guide
 
 > **Target Domain:** `https://aiexam.rupakgupta.com`  
-> **Repository:** `https://github.com/rgupta265/exam-pattern-ai.git`  
-> **Production Stack:** cPanel + CloudLinux Node.js 22 (LTS) + Phusion Passenger + Next.js 16 (App Router) + MySQL 8 + Prisma ORM 6 + Local File Storage + Git Deployment
+> **Repository:** `https://github.com/rgupta265/exam-pattern-ai.git` (Private Repository)  
+> **Production Stack:** cPanel + CloudLinux Node.js 22 (LTS) + Phusion Passenger + Next.js 16 (App Router, Standalone) + MySQL 8 + Prisma ORM 6 + Local File Storage + GitHub Actions CI/CD over SSH  
+> **Application Path:** `/home/rupakgup/aiexam.rupakgupta.com`
 
 ---
 
-## Architecture Overview
+## 1. Architecture Overview
 
 ```
-[Developer / Local Machine]
-          │  git push origin main
-          ▼
-   [GitHub Repository]
-          │  Trigger on push to 'main'
-          ▼
-   [GitHub Actions CI Pipeline (Node 22)]
-      ├── 1. npm ci
-      ├── 2. npm run prisma:generate
-      ├── 3. npm run check-translations
-      ├── 4. npm run typecheck
-      ├── 5. npm run lint
-      ├── 6. npm test (Vitest)
-      ├── 7. npm run build (output: "standalone")
-      └── 8. Package & Upload Standalone Artifact (.next/standalone + static + public)
-          │  (On Success)
-          ▼
-   [cPanel Production Host (aiexam.rupakgupta.com)]
-      ├── Pulls or unpacks pre-built Standalone Production Bundle
-      ├── node server.js (or Phusion Passenger via app.js)
-      └── Zero heavy build execution on cPanel (bypasses CloudLinux EAGAIN worker limits)
-          │
-          ▼
-   [Live Production Application]
-      https://aiexam.rupakgupta.com
+[Developer Local Machine]
+           │  git push origin main
+           ▼
+[Private GitHub Repository] (rgupta265/exam-pattern-ai)
+           │  Automatic Trigger on push to 'main'
+           ▼
+[GitHub Actions CI/CD Pipeline (Node.js 22)]
+   ├── 1. Checkout private repo (built-in GITHUB_TOKEN)
+   ├── 2. npm ci (clean install)
+   ├── 3. npm run prisma:generate
+   ├── 4. npm run check-translations (100% parity check)
+   ├── 5. npm run typecheck (tsc --noEmit)
+   ├── 6. npm run lint (ESLint strict mode)
+   ├── 7. npm test (Vitest unit & integration test suite)
+   ├── 8. npm run build (next build --webpack with output: "standalone")
+   ├── 9. Assemble & validate standalone artifact (.next/standalone + static + public + prisma + messages + app.js)
+   └── 10. Package into standalone-artifact-${COMMIT_SHA}.tar.gz
+           │
+           │  SSH / SCP (Encrypted deployment via SSH Private Key)
+           ▼
+[cPanel Production Server] (/home/rupakgup/aiexam.rupakgupta.com)
+   ├── 1. Receive artifact into .deployments/${COMMIT_SHA}/
+   ├── 2. Validate server.js and .next/static
+   ├── 3. Backup active .next/standalone to .deployments/PREVIOUS/
+   ├── 4. Atomically swap new build into active .next/standalone
+   ├── 5. Preserve .env, storage/, root node_modules, and MySQL database
+   ├── 6. Restart Phusion Passenger (touch tmp/restart.txt)
+   └── 7. Execute automated health check (/api/health)
+           │  (If Healthy) ──► Live Production Updated
+           │  (If Failed)  ──► Automatic Rollback to PREVIOUS & Passenger Restart
+           ▼
+[Live Website Updated]
+https://aiexam.rupakgupta.com
 ```
 
 ---
 
-## 19-Step Production Deployment Guide
+## 2. Private Repository Handling & Security Model
 
-### Step 1: Subdomain Setup
-1. Log into your **cPanel Dashboard**.
-2. Navigate to **Domains** → **Domains** (or **Subdomains**).
-3. Click **Create A New Domain**:
-   - **Domain Name:** `aiexam.rupakgupta.com`
-   - **Document Root:** Deselect "Share document root" and specify `/home/rupakgup/aiexam.rupakgupta.com/public` (or `/home/rupakgup/aiexam.rupakgupta.com`).
-4. Click **Submit**.
+> [!IMPORTANT]
+> The GitHub repository is **PRIVATE**. The cPanel server **never** clones, pulls, or accesses the private GitHub repository.
+
+### Core Security Guarantees:
+1. **Zero GitHub Credentials on cPanel:**
+   * Do **NOT** install GitHub Personal Access Tokens (PAT) on cPanel.
+   * Do **NOT** configure Git origin or GitHub SSH deploy keys on cPanel.
+   * Do **NOT** store `GITHUB_TOKEN` inside cPanel environment variables or `.env`.
+2. **GitHub Actions Authority:**
+   * GitHub Actions runs *inside* the private repository and has automatic, authenticated access to checkout source code.
+   * GitHub Actions compiles and bundles the entire Next.js application into a self-contained standalone production artifact.
+3. **Artifact-Only Transfer:**
+   * GitHub Actions connects to cPanel via SSH using `CPANEL_SSH_PRIVATE_KEY` and transfers *only* the compiled production artifact (`standalone-artifact-${COMMIT_SHA}.tar.gz`).
+   * No raw source code (`src/`, `tests/`, `.git/`, `.github/`) is copied to cPanel.
+4. **CloudLinux & cPanel Protection:**
+   * Next.js production builds (`npm run build`) are **NEVER** executed on cPanel. This completely eliminates CloudLinux worker process table exhaustion (`Error: spawn ... node EAGAIN`).
 
 ---
 
-### Step 2: Clone GitHub Repository
-Open cPanel **Terminal** or SSH into your cPanel server:
+## 3. GitHub Actions Secrets Configuration
+
+Add the following repository secrets in GitHub (**Settings** → **Secrets and variables** → **Actions** → **New repository secret**):
+
+| Secret Name | Description | Example / Production Value |
+|---|---|---|
+| `CPANEL_HOST` | cPanel server IP address or hostname | `162.241.85.197` (or `server.rupakgupta.com`) |
+| `CPANEL_PORT` | SSH port configured on cPanel | `22` (or your hosting provider's SSH port) |
+| `CPANEL_USERNAME` | cPanel username | `rupakgup` |
+| `CPANEL_SSH_PRIVATE_KEY` | OpenSSH formatted Private SSH Key | `-----BEGIN OPENSSH PRIVATE KEY----- ...` |
+| `CPANEL_APP_PATH` | Absolute path to application root on cPanel | `/home/rupakgup/aiexam.rupakgupta.com` |
+
+---
+
+## 4. SSH Key Generation & cPanel Public Key Setup
+
+To enable GitHub Actions to deploy to cPanel securely without passwords:
+
+### Step 4.1: Generate SSH Key Pair (Locally or in Terminal)
+Run the following command in your terminal:
 ```bash
-# Navigate to home directory
-cd /home/rupakgup
+ssh-keygen -t ed25519 -C "github-actions-deploy@aiexam.rupakgupta.com" -f ./cpanel_deploy_key
+```
+*(Or use `ssh-keygen -t rsa -b 4096` if your host requires RSA).* Leave passphrase empty for automated CI/CD.
 
-# Clone repository into the subdomain directory
-git clone https://github.com/rgupta265/exam-pattern-ai.git aiexam.rupakgupta.com
+This produces two files:
+* `cpanel_deploy_key` (Private key — Add as `CPANEL_SSH_PRIVATE_KEY` in GitHub Secrets)
+* `cpanel_deploy_key.pub` (Public key — Authorize in cPanel)
 
-# Enter directory
-cd aiexam.rupakgupta.com
+### Step 4.2: Authorize Public Key on cPanel
+**Option A: via cPanel Web Interface**
+1. Log in to cPanel → **SSH Access** → **Manage SSH Keys**.
+2. Click **Import Key**.
+3. Paste the public key content into **Public Key** box (name it `github_deploy_key.pub`).
+4. Click **Import**.
+5. Back in **Manage SSH Keys**, click **Manage** next to the imported key and click **Authorize**.
+
+**Option B: via cPanel Terminal / SSH**
+```bash
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+cat >> ~/.ssh/authorized_keys << 'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... github-actions-deploy@aiexam.rupakgupta.com
+EOF
+chmod 600 ~/.ssh/authorized_keys
 ```
 
 ---
 
-### Step 3: Configure Node.js 22
-1. In cPanel, navigate to **Software** → **Setup Node.js App** (or **NodeJS Selector**).
-2. Click **Create Application**.
-3. Select **Node.js version:** `22.x` (or latest available 20.x/22.x LTS).
-4. Set **Application mode:** `Production`.
+## 5. cPanel Node.js Application Manager Setup
 
----
+In cPanel under **Software** → **Setup Node.js App**:
 
-### Step 4: Configure Application Manager & Paths
-Set the following paths in Setup Node.js App:
-* **Application root:** `aiexam.rupakgupta.com` (relative to `/home/rupakgup/`).
-* **Application URL:** `aiexam.rupakgupta.com`
-* **Application startup file:** `app.js`
+1. **Node.js version:** `22.x` (or latest 20.x/22.x LTS).
+2. **Application mode:** `Production`.
+3. **Application root:** `aiexam.rupakgupta.com` (maps to `/home/rupakgup/aiexam.rupakgupta.com`).
+4. **Application URL:** `aiexam.rupakgupta.com`
+5. **Application startup file:** `app.js`
 
----
-
-### Step 5: Verify Application Root Structure
-Ensure the project structure matches:
-```
-/home/rupakgup/aiexam.rupakgupta.com/
-├── app.js                   <-- Phusion Passenger wrapper
-├── deploy.sh                <-- Automated deployment script
-├── package.json
-├── package-lock.json
-├── next.config.ts
-├── prisma/
-│   ├── schema.prisma
-│   └── seed.ts
-├── src/
-│   └── middleware.ts
-└── storage/                 <-- Local storage directory
-    ├── private/
-    └── public/
-```
-
----
-
-### Step 6: Verify Startup File (`app.js`)
-`app.js` serves as the minimal production wrapper for Phusion Passenger without introducing extraneous frameworks:
+### Phusion Passenger Startup Wrapper (`app.js`)
+`app.js` resides in `/home/rupakgup/aiexam.rupakgupta.com/app.js` and acts as the entrypoint for Passenger:
 ```javascript
-const next = require("next");
-const http = require("http");
+const fs = require("fs");
+const path = require("path");
 
-const port = parseInt(process.env.PORT || "3000", 10);
-const hostname = process.env.HOSTNAME || "127.0.0.1";
+// Load .env from root before starting standalone server if dotenv is available
+const rootEnvPath = path.join(__dirname, ".env");
+if (fs.existsSync(rootEnvPath)) {
+  try {
+    require("dotenv").config({ path: rootEnvPath });
+  } catch {}
+}
 
-const app = next({ dev: false, hostname, port });
-const handle = app.getRequestHandler();
+const standaloneServerPath = path.join(__dirname, ".next", "standalone", "server.js");
 
-app.prepare().then(() => {
-  const server = http.createServer(async (req, res) => {
-    try {
-      await handle(req, res);
-    } catch (error) {
-      console.error("Next.js request error:", error);
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.end("Internal Server Error");
-      }
-    }
-  });
-
-  server.listen(port, hostname, () => {
-    console.log(`> ExamPattern AI Next.js running on http://${hostname}:${port}`);
-  });
-});
+if (fs.existsSync(standaloneServerPath)) {
+  require(standaloneServerPath);
+} else {
+  // fallback server initialization ...
+}
 ```
 
 ---
 
-### Step 7: Environment Variables Setup
-Configure the environment variables in cPanel under **Setup Node.js App** → **Environment Variables**, or in a protected `.env` file (`chmod 600 .env`):
+## 6. Standalone Production Artifact Structure
+
+The production artifact packaged by GitHub Actions contains exclusively the pruned production bundle:
+
+```
+.next/standalone/
+├── server.js               <-- Minimal production Node.js server
+├── package.json            <-- Traced dependency manifest
+├── node_modules/           <-- Pruned production dependencies
+├── prisma/                 <-- Schema & client references
+├── messages/               <-- i18n translations (en.json, hi.json)
+├── app.js                  <-- Passenger entrypoint
+├── public/                 <-- Static public assets & icons
+└── .next/
+    ├── static/             <-- Webpack static CSS/JS chunks
+    └── server/             <-- Server pages & route handlers
+```
+
+---
+
+## 7. Atomic Deployment & Rollback Lifecycle
+
+Every deployment is atomic and zero-downtime:
+
+```
+1. Upload artifact to /home/rupakgup/aiexam.rupakgupta.com/.deployments/standalone-artifact-<SHA>.tar.gz
+2. Extract to /home/rupakgup/aiexam.rupakgupta.com/.deployments/<SHA>/
+3. Validate presence of server.js and .next/static/
+4. Copy current .next/standalone to .deployments/PREVIOUS/
+5. Atomic swap: stage to .next/standalone_staging, swap to .next/standalone
+6. Sync root app.js
+7. Restart Passenger: touch tmp/restart.txt
+8. Run Health Check: curl https://aiexam.rupakgupta.com/api/health
+    ├── Success (200): Deployment marked successful
+    └── Failure: Restore .deployments/PREVIOUS to .next/standalone, touch tmp/restart.txt, fail CI
+```
+
+---
+
+## 8. Preserved Production Assets & Data Isolation
+
+The deployment process strictly preserves all runtime state on cPanel:
+
+1. **`.env` (Environment File):** NEVER overwritten or committed to repository.
+2. **`storage/` (Local Private Storage):** Uploaded candidate documents, question assets, and exam notifications reside in `/home/rupakgup/aiexam.rupakgupta.com/storage/` or `STORAGE_BASE_PATH` and are NEVER touched.
+3. **`node_modules` (Root Symlink):** The root `node_modules` symlink managed by CloudLinux virtual environment is NEVER deleted or overwritten.
+4. **MySQL Database:** Automatic deployments **NEVER** run `prisma db push`, `prisma migrate reset`, or `prisma db:seed`. Database schemas remain completely untouched during routine code deployments.
+
+---
+
+## 9. Environment Variables on cPanel
+
+Production environment variables configured in `.env` (or cPanel Setup Node.js App):
 
 ```ini
 # Application
@@ -158,8 +226,9 @@ DB_POOL_SIZE=10
 AUTH_SECRET=YOUR_RANDOM_HIGH_ENTROPY_32_CHAR_SECRET_KEY
 AUTH_EXPIRES_IN=7d
 
-# Google Gemini AI API Key (Server-Side Only)
+# Google Gemini AI Engine
 GEMINI_API_KEY=YOUR_GOOGLE_GEMINI_API_KEY
+GEMINI_MODEL=gemini-1.5-flash
 
 # Local File Storage (Outside Web Root)
 STORAGE_DRIVER=local
@@ -182,170 +251,57 @@ SUPPORTED_LOCALES=en,hi
 
 # Logging
 LOG_LEVEL=info
-
-# Initial Super Admin Seed Credentials
-SEED_ADMIN_EMAIL=admin@exampattern.ai
-SEED_ADMIN_PASSWORD=YOUR_INITIAL_ADMIN_PASSWORD
 ```
 
 ---
 
-### Step 8: MySQL 8 Database Creation
-1. Go to cPanel → **MySQL® Databases**.
-2. **Create Database:** `rupakgup_exampattern`.
-3. **Create User:** `rupakgup_examuser` with a strong 24-character generated password.
-4. **Add User to Database:** Select `rupakgup_examuser` and `rupakgup_exampattern`, grant **ALL PRIVILEGES**.
+## 10. Automated Health Check Verification
 
----
-
-### Step 9: Install Dependencies (`npm ci`)
-Activate the cPanel Node virtual environment and run clean install (including build-time devDependencies like `tsx`, `tailwindcss`, `postcss`, `autoprefixer`, and `prisma`):
-```bash
-# Path displayed at top of cPanel Node.js selector page:
-source /home/rupakgup/nodevenv/aiexam.rupakgupta.com/22/bin/activate
-cd /home/rupakgup/aiexam.rupakgupta.com
-
-npm ci --include=dev --prefer-offline --no-audit
+The pipeline polls `https://aiexam.rupakgupta.com/api/health` with exponential retries.
+A healthy deployment returns HTTP 200:
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "timestamp": "2026-08-31T22:30:00.000Z",
+    "version": "1.0.0",
+    "database": "connected"
+  }
+}
 ```
 
----
-
-### Step 10: Generate Prisma ORM Client
-```bash
-npm run prisma:generate
-```
+Then verifies canonical user-facing route: `https://aiexam.rupakgupta.com/en/login`.
 
 ---
 
-### Step 11: Apply Database Migrations (`prisma migrate deploy`)
-> [!IMPORTANT]
-> Always run `prisma migrate deploy` in production. **NEVER** run `prisma migrate dev` or `prisma migrate reset` in production.
+## 11. Daily Developer Workflow
+
+After initial GitHub Secrets configuration, the ONLY deployment command you need is:
 
 ```bash
-npx prisma migrate deploy
+git add .
+git commit -m "Your descriptive change message"
+git push origin main
 ```
 
----
-
-### Step 12: Initial Database Seeding
-> [!NOTE]
-> Database seeding populates system roles, permissions, exam categories, sample blueprint, and initial Super Admin. Per security standards, **0 candidate accounts** are seeded.
-
-```bash
-npx tsx prisma/seed.ts
-```
+GitHub Actions automatically:
+1. Validates code, types, lints, and runs 48 test suites (212 unit/integration tests).
+2. Builds standalone production bundle on GitHub's high-speed Ubuntu runners.
+3. Securely SSHs into cPanel.
+4. Uploads artifact and performs atomic swap.
+5. Restarts Passenger.
+6. Runs health check and reports status.
 
 ---
 
-### Step 13: Build Next.js Production Bundle (Standalone Output)
-Next.js compiles with `output: "standalone"`, creating a minimal, self-contained production bundle at `.next/standalone/`:
-```bash
-npm run build
-```
+## 12. Troubleshooting & FAQ
 
-The standalone output bundles all traced dependencies:
-* `.next/standalone/server.js` (Production HTTP server entrypoint)
-* `.next/standalone/node_modules/` (Pruned production dependencies)
-* `.next/standalone/.next/` (Compiled server chunks)
-
-To ensure static assets and public icons are served:
-```bash
-# Link static files into standalone directory
-mkdir -p .next/standalone/.next
-cp -r .next/static .next/standalone/.next/
-if [ -d "public" ]; then
-  cp -r public .next/standalone/
-fi
-```
-
----
-
-### Step 14: Passenger Restart
-Trigger Phusion Passenger restart:
-```bash
-mkdir -p tmp
-touch tmp/restart.txt
-```
-Or click **Restart** inside the cPanel Node.js Application Manager UI.
-
----
-
-### Step 15: SSL & HTTPS Enforcement
-1. In cPanel, navigate to **SSL/TLS Status**.
-2. Select `aiexam.rupakgupta.com` and click **Run AutoSSL** (or install Let's Encrypt SSL).
-3. Under **Domains**, toggle **Force HTTPS Redirect** to ON.
-
----
-
-### Step 16: Verification & Health Check
-Verify the live application:
-1. **Health Check:** `curl -I https://aiexam.rupakgupta.com/api/health` (should return HTTP 200).
-2. **Canonical English Route:** `https://aiexam.rupakgupta.com/en`
-3. **Canonical Hindi Route:** `https://aiexam.rupakgupta.com/hi`
-4. **Authentication:** Register a new test candidate and log in.
-5. **Admin Access:** Log in as Super Admin (`/en/login` → redirects to `/en/admin/dashboard`).
-6. **Examination UI:** Start a mock exam and verify timer synchronization, question palette, and autosave.
-
----
-
-### Step 17: Git Deployment Automation (GitHub Actions)
-
-Configure automated deployment on `git push origin main`:
-
-#### 1. Add GitHub Repository Secrets
-In GitHub (`rgupta265/exam-pattern-ai` → **Settings** → **Secrets and variables** → **Actions**):
-* `CPANEL_HOST`: Your cPanel server IP or hostname (e.g., `server.rupakgupta.com`).
-* `CPANEL_USERNAME`: `rupakgup`
-* `CPANEL_SSH_PORT`: `22` (or your host's SSH port).
-* `CPANEL_SSH_KEY`: The private SSH key authorized in cPanel SSH Access (`~/.ssh/authorized_keys`).
-
-#### 2. Workflow Trigger
-Whenever code is pushed to `main`:
-1. GitHub Actions runs all unit tests, lints, typechecks, and the Next.js build.
-2. If all checks pass, GitHub Actions connects via SSH and runs `/home/rupakgup/aiexam.rupakgupta.com/deploy.sh`.
-3. Phusion Passenger is restarted automatically.
-
----
-
-### Step 18: Safe Rollback Procedure
-
-If a production release introduces an issue:
-
-```bash
-cd /home/rupakgup/aiexam.rupakgupta.com
-
-# 1. Identify previous stable commit hash
-git log -n 5 --oneline
-
-# 2. Reset repository to the known stable commit
-git reset --hard <STABLE_COMMIT_HASH>
-
-# 3. Clean reinstall
-npm ci
-
-# 4. Re-generate Prisma Client
-npm run prisma:generate
-
-# 5. Rebuild Next.js
-npm run build
-
-# 6. Restart Passenger
-touch tmp/restart.txt
-```
-
-> [!WARNING]
-> **Database Rollback Note:** Never automatically rollback or reset MySQL migrations. If a database schema change needs reversal, prepare and deploy a forward-compatible downward Prisma migration.
-
----
-
-### Step 19: Troubleshooting & Maintenance
-
-| Issue | Root Cause | Resolution |
+| Problem | Root Cause | Solution |
 |---|---|---|
-| **500 Internal Server Error on Startup** | Missing or incorrect `.env` variables | Check `error.log` or Passenger log in `stderr.log`. Verify `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `AUTH_SECRET`. |
-| **Prisma Connection Refused (`ECONNREFUSED 127.0.0.1:3306`)** | MySQL is listening on localhost or socket | Verify MySQL service is running. If cPanel uses a socket, set `DB_SOCKET_PATH=/var/lib/mysql/mysql.sock` in `.env`. |
-| **File Upload Permission Denied (`EACCES`)** | Incorrect storage folder permissions | Run `chmod -R 750 /home/rupakgup/exam-pattern-storage` and ensure owner is `rupakgup`. |
-| **Error: spawn ... node EAGAIN** | CloudLinux NPROC process table limit triggered during Next.js worker compilation | Next.js is configured with `output: "standalone"`. Run the heavy build in GitHub Actions (CI) and download/deploy the pre-built `.next/standalone` bundle to cPanel, or run Passenger via `app.js` without running `npm run build` on the server. |
-| **Out of Memory during `npm run build`** | Resource limits on shared cPanel hosting | Build locally or in GitHub Actions CI, which packages `.next/standalone` without server memory constraints. |
-| **Passenger not reloading updated code** | `restart.txt` not touched or timestamp unchanged | Run `touch tmp/restart.txt` or click **Restart** in cPanel Node.js Application Manager. |
-| **Locale redirect loop on `/`** | Proxy middleware misconfiguration | Verify `src/middleware.ts` is present and exports `{ middleware, config }` from `./proxy`. |
+| **Error: spawn ... node EAGAIN** | Running `next build` on cPanel triggers CloudLinux NPROC process limits. | **Resolved.** GitHub Actions compiles the standalone artifact remotely; cPanel only executes the pre-built bundle. |
+| **SSH connection refused / Permission denied (publickey)** | Public key not authorized in cPanel or wrong port/user. | Ensure public key is in `~/.ssh/authorized_keys` with `chmod 600`. Verify `CPANEL_PORT` and `CPANEL_USERNAME` in GitHub Secrets. |
+| **500 Internal Server Error after deploy** | Missing `.env` variables or MySQL database connectivity error. | Check cPanel Node.js application `stderr.log`. Verify `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`. |
+| **Health Check Timed Out** | Passenger worker taking longer than 30s to boot. | Pipeline automatically triggers rollback to `PREVIOUS` and reports error in GitHub Actions logs. Check server CPU/RAM in cPanel. |
+| **Gemini API Error (model not found)** | `gemini-2.0-flash` deprecated or unavailable in region. | Set `GEMINI_MODEL=gemini-1.5-flash` in cPanel environment variables. |
+
