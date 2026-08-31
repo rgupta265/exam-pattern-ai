@@ -168,8 +168,8 @@ GEMINI_API_KEY=YOUR_GOOGLE_GEMINI_API_KEY
 
 # Local File Storage (Outside Web Root)
 STORAGE_DRIVER=local
-STORAGE_BASE_PATH=/home/rupakgup/exam-pattern-storage
-STORAGE_PATH=/home/rupakgup/exam-pattern-storage
+STORAGE_BASE_PATH=/home/rupakgup/aiexam-storage
+STORAGE_PATH=/home/rupakgup/aiexam-storage
 
 # Email / SMTP Configuration
 EMAIL_PROVIDER=smtp
@@ -204,13 +204,13 @@ SEED_ADMIN_PASSWORD=YOUR_INITIAL_ADMIN_PASSWORD
 ---
 
 ### Step 9: Install Dependencies (`npm ci`)
-Activate the cPanel Node virtual environment and run clean install:
+Activate the cPanel Node virtual environment and run clean install (including build-time devDependencies like `tsx`, `tailwindcss`, `postcss`, `autoprefixer`, and `prisma`):
 ```bash
 # Path displayed at top of cPanel Node.js selector page:
 source /home/rupakgup/nodevenv/aiexam.rupakgupta.com/22/bin/activate
 cd /home/rupakgup/aiexam.rupakgupta.com
 
-npm ci --prefer-offline --no-audit
+npm ci --include=dev --prefer-offline --no-audit
 ```
 
 ---

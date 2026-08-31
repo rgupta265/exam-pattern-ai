@@ -3,6 +3,7 @@
 // ==========================================
 // This file serves as the entry point for Phusion Passenger in cPanel.
 // It initializes and boots the Next.js production server.
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 const next = require("next");
 const http = require("http");

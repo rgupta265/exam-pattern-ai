@@ -37,10 +37,10 @@ echo "📥 [1/6] Synchronizing repository from origin/${DEPLOY_BRANCH}..."
 git fetch origin "${DEPLOY_BRANCH}"
 git reset --hard "origin/${DEPLOY_BRANCH}"
 
-# 4. Clean dependency installation
+# 4. Clean dependency installation (including build-time devDependencies)
 echo ""
-echo "📦 [2/6] Installing dependencies via npm ci..."
-npm ci --prefer-offline --no-audit
+echo "📦 [2/6] Installing dependencies via npm ci --include=dev..."
+npm ci --include=dev --prefer-offline --no-audit
 
 # 5. Generate Prisma Client
 echo ""
