@@ -22,6 +22,7 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(),
     },
     question: {
+      count: vi.fn().mockResolvedValue(10),
       create: vi.fn(),
     },
     mockGenerationRequest: {

@@ -1,11 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { MockPatternValidatorService } from "./mock-pattern-validator.service";
 import { geminiQuestionService } from "@/services/ai/gemini-question.service";
 import { RbacService } from "@/services/rbac/rbac.service";
 import { AuditService } from "@/services/audit/audit.service";
 import { PERMISSIONS } from "@/lib/constants";
 import { SessionUser } from "@/types/auth.types";
-import { BadRequestError, NotFoundError, ValidationError } from "@/lib/errors";
+import { NotFoundError, ValidationError } from "@/lib/errors";
 import {
   GenerateFullMockRequestInput,
   GenerateTopicMockRequestInput,
@@ -152,243 +151,18 @@ export class MockEngineService {
     ip?: string,
     userAgent?: string
   ) {
-    RbacService.requirePermission(user, PERMISSIONS.MOCK_CREATE);
-
-    // 1. Fetch Exam Version & Authoritative Locked/Active Blueprint
-    const examVersion = await prisma.examVersion.findUnique({
-      where: { id: input.examVersionId, deletedAt: null },
-      include: {
-        exam: true,
-        blueprints: {
-          where: input.blueprintId
-            ? { id: input.blueprintId }
-            : { status: { in: ["LOCKED", "ACTIVE", "VERIFIED"] } },
-          orderBy: { versionNumber: "desc" },
-          take: 1,
-          include: {
-            sections: { orderBy: { sectionOrder: "asc" } },
-          },
-        },
-        syllabi: {
-          where: { isVerified: true },
-          include: {
-            sections: {
-              include: { topics: { orderBy: { sortOrder: "asc" } } },
-              orderBy: { sortOrder: "asc" },
-            },
-          },
-        },
-      },
+    const { ActualPatternGeneratorService } = await import("./actual-pattern-generator.service");
+    return ActualPatternGeneratorService.generateActualPatternMock({
+      examVersionId: input.examVersionId,
+      blueprintId: input.blueprintId,
+      customTitle: input.title,
+      generationMode: input.generationMode || "FULL_PATTERN",
+      generateMissingWithAi: input.generateMissingWithAi !== false,
+      quickQuestionCount: input.quickQuestionCount,
+      user,
+      ip,
+      userAgent,
     });
-
-    if (!examVersion) throw new NotFoundError("Exam Version");
-
-    const blueprint = examVersion.blueprints[0];
-    if (!blueprint) {
-      throw new BadRequestError(
-        "Cannot generate Full Exam Mock: No VERIFIED or LOCKED blueprint exists for this exam version."
-      );
-    }
-
-    const syllabus = examVersion.syllabi[0] || (await prisma.syllabus.findFirst({
-      where: { examVersionId: examVersion.id },
-      include: {
-        sections: {
-          include: { topics: { orderBy: { sortOrder: "asc" } } },
-          orderBy: { sortOrder: "asc" },
-        },
-      },
-    }));
-
-    if (!syllabus || syllabus.sections.length === 0) {
-      throw new BadRequestError("Cannot generate Mock: No syllabus defined for this exam version.");
-    }
-
-    // 2. Track Request Lifecycle
-    const genRequest = await prisma.mockGenerationRequest.create({
-      data: {
-        examVersionId: examVersion.id,
-        requestedById: user.id,
-        status: "PROCESSING",
-        criteria: {
-          blueprintId: blueprint.id,
-          blueprintTitle: blueprint.title,
-          totalQuestions: blueprint.totalQuestions,
-          totalMarks: Number(blueprint.totalMarks),
-          durationMinutes: blueprint.durationMinutes,
-        },
-      },
-    });
-
-    try {
-      const { sequence, code: mockCode } = await this.getNextMockSequenceAndCode(
-        examVersion.exam.code,
-        examVersion.year,
-        examVersion.id,
-        "MOCK"
-      );
-
-      const mockSlug = `${examVersion.exam.slug}-${examVersion.year}-mock-${sequence}-${Date.now().toString(36)}`;
-      const mockTitle = input.title || `${examVersion.exam.name} ${examVersion.year} Mock Test ${sequence}`;
-
-      // 3. Create MockTest Master Record
-      const mockTest = await prisma.mockTest.create({
-        data: {
-          code: mockCode,
-          examVersionId: examVersion.id,
-          blueprintId: blueprint.id,
-          type: "FULL_MOCK",
-          sequence,
-          title: mockTitle,
-          slug: mockSlug,
-          durationMinutes: blueprint.durationMinutes,
-          totalQuestions: blueprint.totalQuestions,
-          totalMarks: blueprint.totalMarks,
-          negativeRate: blueprint.negativeMarkingRate,
-          difficulty: DifficultyLevel.MEDIUM,
-          language: "BILINGUAL",
-          generationType: "BLUEPRINT",
-          createdById: user.id,
-          status: "GENERATING",
-        },
-      });
-
-      // 4. Section-by-Section Question Assembly
-      let overallQuestionOrder = 1;
-
-      for (const bpSec of blueprint.sections) {
-        const mockSec = await prisma.mockTestSection.create({
-          data: {
-            mockTestId: mockTest.id,
-            name: bpSec.name,
-            sectionOrder: bpSec.sectionOrder,
-            questionCount: bpSec.questionCount,
-            marksPerQuestion: bpSec.marksPerQuestion,
-            negativeRate: bpSec.negativeRate,
-          },
-        });
-
-        const matchedSylSec =
-          syllabus.sections.find((s) => s.sortOrder === bpSec.sectionOrder) ||
-          syllabus.sections[bpSec.sectionOrder - 1] ||
-          syllabus.sections[0];
-
-        const topicPool = matchedSylSec?.topics.length > 0 ? matchedSylSec.topics : syllabus.sections.flatMap((s) => s.topics);
-        const secQuestionsToGenerate = bpSec.questionCount;
-
-        for (let qIdx = 0; qIdx < secQuestionsToGenerate; qIdx++) {
-          const selectedTopic = topicPool[qIdx % topicPool.length];
-
-          const generatedBatch = await geminiQuestionService.generateQuestions({
-            examName: examVersion.exam.name,
-            authority: examVersion.exam.authority,
-            versionName: examVersion.versionName,
-            sectionName: bpSec.name,
-            topicName: selectedTopic.name,
-            questionCount: 1,
-            difficulty: qIdx % 3 === 0 ? "EASY" : qIdx % 3 === 1 ? "MEDIUM" : "HARD",
-            language: "English",
-            marksPerQuestion: Number(bpSec.marksPerQuestion),
-            negativeRate: Number(bpSec.negativeRate),
-          });
-
-          const qData = generatedBatch.questions[0];
-
-          const newQuestion = await prisma.question.create({
-            data: {
-              topicId: selectedTopic.id,
-              questionType: "SINGLE_CHOICE",
-              difficulty: qData.difficulty,
-              status: "APPROVED",
-              questionText: qData.questionText.trim(),
-              questionTextHindi: qData.questionTextHindi || null,
-              explanation: qData.explanation.trim(),
-              explanationHindi: qData.explanationHindi || null,
-              marks: bpSec.marksPerQuestion,
-              negativeMarks: bpSec.negativeRate,
-              source: "AI_GENERATED",
-              isAiGenerated: true,
-              isAiValidated: true,
-              isHumanVerified: true,
-              options: {
-                create: qData.options.map((opt, optIdx) => ({
-                  optionKey: opt.key,
-                  optionText: opt.text,
-                  optionTextHindi: opt.textHindi || null,
-                  isCorrect: opt.isCorrect || opt.key === qData.correctAnswer,
-                  sortOrder: optIdx,
-                })),
-              },
-            },
-          });
-
-          await prisma.mockTestQuestion.create({
-            data: {
-              mockTestId: mockTest.id,
-              mockTestSectionId: mockSec.id,
-              questionId: newQuestion.id,
-              questionOrder: overallQuestionOrder++,
-              marks: bpSec.marksPerQuestion,
-              negativeMarks: bpSec.negativeRate,
-            },
-          });
-        }
-      }
-
-      // 5. Run Pattern Validation Engine
-      const validationReport = await MockPatternValidatorService.validate(mockTest.id);
-
-      // 6. Update Request and Mock Test Status
-      await prisma.mockGenerationRequest.update({
-        where: { id: genRequest.id },
-        data: {
-          mockTestId: mockTest.id,
-          status: "COMPLETED",
-          completedAt: new Date(),
-        },
-      });
-
-      if (validationReport.isValid) {
-        await prisma.mockTest.update({
-          where: { id: mockTest.id },
-          data: {
-            status: "PUBLISHED",
-            publishedAt: new Date(),
-          },
-        });
-      }
-
-      await AuditService.log({
-        userId: user.id,
-        action: "MOCK_TEST_GENERATE_FULL",
-        resourceType: "MockTest",
-        resourceId: mockTest.id,
-        ipAddress: ip,
-        userAgent,
-        changesDiff: {
-          code: mockCode,
-          sequence,
-          blueprintId: blueprint.id,
-          totalQuestions: blueprint.totalQuestions,
-          isValid: validationReport.isValid,
-        },
-      });
-
-      return { mockTest, validationReport };
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Mock generation failed";
-
-      await prisma.mockGenerationRequest.update({
-        where: { id: genRequest.id },
-        data: {
-          status: "FAILED",
-          errorMessage,
-          completedAt: new Date(),
-        },
-      });
-
-      throw err;
-    }
   }
 
   /**

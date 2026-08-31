@@ -21,7 +21,11 @@ export async function POST(request: NextRequest) {
 
     const result = await ActualPatternGeneratorService.generateActualPatternMock({
       examVersionId: body.examVersionId,
+      blueprintId: body.blueprintId,
       customTitle: body.customTitle,
+      generationMode: body.generationMode || "FULL_PATTERN",
+      generateMissingWithAi: body.generateMissingWithAi !== false,
+      quickQuestionCount: body.quickQuestionCount,
       user,
       ip,
       userAgent,

@@ -27,6 +27,7 @@ interface MockDetailData {
   id: string;
   title: string;
   type: string;
+  generationType?: string;
   durationMinutes: number;
   totalQuestions: number;
   totalMarks: number;
@@ -238,31 +239,38 @@ export default function AdminMockDetailPage({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline">{mock.type}</Badge>
+                <Badge variant={mock.generationType === "FULL_PATTERN_BASED" || mock.generationType === "BLUEPRINT" || mock.generationType === "BLUEPRINT_ACTUAL_PATTERN" ? "success" : "secondary"}>
+                  {mock.generationType === "FULL_PATTERN_BASED" || mock.generationType === "BLUEPRINT" || mock.generationType === "BLUEPRINT_ACTUAL_PATTERN" ? "Full Pattern-Based" : "Quick / Partial"}
+                </Badge>
                 <Badge variant={mock.status === "PUBLISHED" ? "success" : "warning"}>{mock.status}</Badge>
                 {latestValidation && (
                   <Badge variant={latestValidation.isValid ? "success" : "destructive"}>
-                    Pattern Validation: {latestValidation.isValid ? "PASSED" : "FAILED"}
+                    Pattern Validation: {latestValidation.isValid ? "100% PASSED" : "FAILED"}
                   </Badge>
                 )}
               </div>
               <CardTitle className="text-2xl font-bold text-slate-900 mt-2">{mock.title}</CardTitle>
               <CardDescription className="text-xs text-slate-500 mt-0.5">
-                {mock.examVersion.exam.name} • {mock.examVersion.versionName}
+                Exam: {mock.examVersion.exam.name} ({mock.examVersion.versionName}) • Pattern: {mock.blueprint?.title || "Standard Pattern"}
               </CardDescription>
             </div>
 
-            <div className="flex gap-3 text-center text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
               <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="block text-slate-400">Questions</span>
-                <strong className="text-base font-bold text-slate-900">{mock.totalQuestions}</strong>
+                <span className="block text-slate-400 text-[10px] uppercase">Questions</span>
+                <strong className="text-sm font-bold text-slate-900">{mock.totalQuestions} Qs</strong>
               </div>
               <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="block text-slate-400">Total Marks</span>
-                <strong className="text-base font-bold text-slate-900">{mock.totalMarks.toString()}</strong>
+                <span className="block text-slate-400 text-[10px] uppercase">Duration</span>
+                <strong className="text-sm font-bold text-slate-900">{mock.durationMinutes}m</strong>
               </div>
               <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="block text-slate-400">Duration</span>
-                <strong className="text-base font-bold text-slate-900">{mock.durationMinutes}m</strong>
+                <span className="block text-slate-400 text-[10px] uppercase">Total Marks</span>
+                <strong className="text-sm font-bold text-slate-900">{mock.totalMarks.toString()}</strong>
+              </div>
+              <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="block text-slate-400 text-[10px] uppercase">Sections</span>
+                <strong className="text-sm font-bold text-slate-900">{mock.sections.length} Sections</strong>
               </div>
             </div>
           </div>

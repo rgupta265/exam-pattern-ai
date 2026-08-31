@@ -17,13 +17,26 @@ export const mockPublishStatusEnum = z.enum([
   "ARCHIVED",
 ]);
 
+export const mockGenerationModeEnum = z.enum(["FULL_PATTERN", "QUICK"]);
+export type MockGenerationMode = z.infer<typeof mockGenerationModeEnum>;
+
 export const generateFullMockRequestSchema = z.object({
   examVersionId: z.string().uuid("Invalid exam version ID"),
   blueprintId: z.string().uuid().optional(),
   title: z.string().optional(),
+  generationMode: mockGenerationModeEnum.default("FULL_PATTERN"),
+  generateMissingWithAi: z.boolean().default(true),
+  quickQuestionCount: z.number().int().min(5).max(200).optional(),
 });
 
 export type GenerateFullMockRequestInput = z.infer<typeof generateFullMockRequestSchema>;
+
+export const patternSummaryQuerySchema = z.object({
+  examVersionId: z.string().uuid("Invalid exam version ID"),
+  blueprintId: z.string().uuid().optional(),
+});
+
+export type PatternSummaryQueryInput = z.infer<typeof patternSummaryQuerySchema>;
 
 export const generateTopicMockRequestSchema = z.object({
   examVersionId: z.string().uuid("Invalid exam version ID"),
