@@ -52,44 +52,51 @@ jobs:
 
       - name: 10. Assemble and validate standalone deployment bundle
         run: |
-          echo "Validating standalone build output..."
+          echo "Validating build output..."
+          test -f .next/BUILD_ID || { echo "❌ Missing .next/BUILD_ID"; exit 1; }
           test -f .next/standalone/server.js || { echo "❌ Missing .next/standalone/server.js"; exit 1; }
 
+          echo "Preparing deployment distribution..."
+          mkdir -p deploy-dist/.next deploy-dist/tmp
+
+          echo "Copying complete .next directory into deploy-dist..."
+          cp -r .next/* deploy-dist/.next/
+
           echo "Copying static assets into standalone bundle..."
-          mkdir -p .next/standalone/.next
-          cp -r .next/static .next/standalone/.next/static
+          mkdir -p deploy-dist/.next/standalone/.next
+          cp -r .next/static deploy-dist/.next/standalone/.next/static
 
           if [ -d "public" ]; then
             echo "Copying public directory..."
-            cp -r public .next/standalone/
+            cp -r public deploy-dist/
+            cp -r public deploy-dist/.next/standalone/
           fi
 
           if [ -d "messages" ]; then
             echo "Copying messages directory..."
-            cp -r messages .next/standalone/
+            cp -r messages deploy-dist/
+            cp -r messages deploy-dist/.next/standalone/
           fi
 
           if [ -d "prisma" ]; then
             echo "Copying prisma directory..."
-            cp -r prisma .next/standalone/
+            cp -r prisma deploy-dist/
+            cp -r prisma deploy-dist/.next/standalone/
           fi
 
-          if [ -f "app.js" ]; then
-            echo "Copying app.js startup wrapper..."
-            cp app.js .next/standalone/app.js
-          fi
-
-          echo "Preparing deployment distribution..."
-          mkdir -p deploy-dist/.next deploy-dist/tmp
-          cp -r .next/standalone deploy-dist/.next/
+          echo "Copying app.js startup wrapper..."
           cp app.js deploy-dist/app.js
+          cp app.js deploy-dist/.next/standalone/app.js
+
           echo "Deployment timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC') - Commit: ${{ github.sha }}" > deploy-dist/tmp/restart.txt
 
-          echo "Validating final standalone bundle structure..."
+          echo "Validating final deployment distribution structure..."
+          test -f deploy-dist/.next/BUILD_ID || { echo "❌ Validation failed: .next/BUILD_ID missing"; exit 1; }
+          test -f deploy-dist/.next/routes-manifest.json || { echo "❌ Validation failed: routes-manifest.json missing"; exit 1; }
           test -f deploy-dist/.next/standalone/server.js || { echo "❌ Validation failed: server.js missing"; exit 1; }
           test -f deploy-dist/app.js || { echo "❌ Validation failed: app.js missing"; exit 1; }
           test -d deploy-dist/.next/standalone/node_modules || { echo "❌ Validation failed: standalone node_modules missing"; exit 1; }
-          test -d deploy-dist/.next/standalone/.next/static || { echo "❌ Validation failed: .next/static missing"; exit 1; }
+          test -d deploy-dist/.next/static || { echo "❌ Validation failed: .next/static missing"; exit 1; }
           test -f deploy-dist/tmp/restart.txt || { echo "❌ Validation failed: tmp/restart.txt missing"; exit 1; }
 
           echo "Artifact structure validated successfully!"
