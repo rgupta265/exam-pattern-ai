@@ -123,29 +123,33 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Download build artifact
+      - name: 1. Checkout repository for deployment script
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 3. Install basic-ftp
+        run: npm install basic-ftp
+
+      - name: 4. Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: deploy-dist
           path: deploy-dist
 
-      - name: 2. Deploy to cPanel via Secure FTPS (Port 21)
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.CPANEL_FTP_SERVER || secrets.CPANEL_HOST || '103.224.246.193' }}
-          username: ${{ secrets.CPANEL_FTP_USERNAME || secrets.CPANEL_USERNAME || 'rupakgup' }}
-          password: ${{ secrets.CPANEL_FTP_PASSWORD || secrets.CPANEL_PASSWORD }}
-          port: ${{ secrets.CPANEL_FTP_PORT || 21 }}
-          protocol: ftps
-          security: loose
-          local-dir: ./deploy-dist/
-          server-dir: ${{ secrets.CPANEL_FTP_APP_DIR || './' }}
-          dangerous-clean-slate: false
-          exclude: |
-            **/.env*
-            **/storage/**
+      - name: 5. Deploy to cPanel via Node.js Secure FTPS
+        env:
+          CPANEL_FTP_SERVER: ${{ secrets.CPANEL_FTP_SERVER || secrets.CPANEL_HOST || '103.224.246.193' }}
+          CPANEL_FTP_USERNAME: ${{ secrets.CPANEL_FTP_USERNAME || secrets.CPANEL_USERNAME || 'rupakgup' }}
+          CPANEL_FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD || secrets.CPANEL_PASSWORD }}
+          CPANEL_FTP_PORT: ${{ secrets.CPANEL_FTP_PORT || 21 }}
+          CPANEL_FTP_APP_DIR: ${{ secrets.CPANEL_FTP_APP_DIR || './' }}
+        run: node scripts/deploy-ftp.js
 
-      - name: 3. Health Check & Verification
+      - name: 6. Health Check & Verification
         env:
           HEALTH_URL: "https://aiexam.rupakgupta.com/api/health"
           LOGIN_URL: "https://aiexam.rupakgupta.com/en/login"
