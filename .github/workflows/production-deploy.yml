@@ -1,4 +1,4 @@
-name: Production Deployment
+﻿name: Production Deployment
 
 on:
   push:
@@ -79,15 +79,18 @@ jobs:
             cp app.js .next/standalone/app.js
           fi
 
-          mkdir -p .next/standalone/tmp
-          echo "Deployment timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC') - Commit: ${{ github.sha }}" > .next/standalone/tmp/restart.txt
+          echo "Preparing deployment distribution..."
+          mkdir -p deploy-dist/.next deploy-dist/tmp
+          cp -r .next/standalone deploy-dist/.next/
+          cp app.js deploy-dist/app.js
+          echo "Deployment timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC') - Commit: ${{ github.sha }}" > deploy-dist/tmp/restart.txt
 
           echo "Validating final standalone bundle structure..."
-          test -f .next/standalone/server.js || { echo "❌ Validation failed: server.js missing"; exit 1; }
-          test -f .next/standalone/app.js || { echo "❌ Validation failed: app.js missing"; exit 1; }
-          test -d .next/standalone/node_modules || { echo "❌ Validation failed: standalone node_modules missing"; exit 1; }
-          test -d .next/standalone/.next/static || { echo "❌ Validation failed: .next/static missing"; exit 1; }
-          test -f .next/standalone/tmp/restart.txt || { echo "❌ Validation failed: tmp/restart.txt missing"; exit 1; }
+          test -f deploy-dist/.next/standalone/server.js || { echo "❌ Validation failed: server.js missing"; exit 1; }
+          test -f deploy-dist/app.js || { echo "❌ Validation failed: app.js missing"; exit 1; }
+          test -d deploy-dist/.next/standalone/node_modules || { echo "❌ Validation failed: standalone node_modules missing"; exit 1; }
+          test -d deploy-dist/.next/standalone/.next/static || { echo "❌ Validation failed: .next/static missing"; exit 1; }
+          test -f deploy-dist/tmp/restart.txt || { echo "❌ Validation failed: tmp/restart.txt missing"; exit 1; }
 
           echo "Artifact structure validated successfully!"
 
@@ -95,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deploy-dist
-          path: .next/standalone/
+          path: deploy-dist/
           retention-days: 1
 
   deploy-to-cpanel:
