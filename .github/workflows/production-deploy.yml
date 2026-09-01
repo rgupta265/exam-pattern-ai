@@ -69,24 +69,33 @@ jobs:
           cp .next/BUILD_ID deploy-dist/.next/standalone/.next/BUILD_ID
           cp .next/*.json deploy-dist/.next/standalone/.next/
 
-          echo "3. Copying application assets (public, messages, prisma)..."
+          echo "3. Populating root .next directory..."
+          cp -r .next/static deploy-dist/.next/static
+          cp -r .next/server deploy-dist/.next/server
+          cp .next/BUILD_ID deploy-dist/.next/BUILD_ID
+          cp .next/*.json deploy-dist/.next/
+
+          echo "4. Copying application assets (public, messages, prisma)..."
           if [ -d "public" ]; then
+            cp -r public deploy-dist/
             cp -r public deploy-dist/.next/standalone/
           fi
 
           if [ -d "messages" ]; then
+            cp -r messages deploy-dist/
             cp -r messages deploy-dist/.next/standalone/
           fi
 
           if [ -d "prisma" ]; then
+            cp -r prisma deploy-dist/
             cp -r prisma deploy-dist/.next/standalone/
           fi
 
-          echo "4. Copying app.js startup wrapper..."
+          echo "5. Copying app.js startup wrapper..."
           cp app.js deploy-dist/app.js
           cp app.js deploy-dist/.next/standalone/app.js
 
-          echo "5. Writing restart signal..."
+          echo "6. Writing restart signal..."
           echo "Deployment timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC') - Commit: ${{ github.sha }}" > deploy-dist/tmp/restart.txt
 
           echo "Validating final deployment distribution..."
@@ -95,23 +104,19 @@ jobs:
           test -f deploy-dist/.next/standalone/server.js || { echo "❌ Validation failed: standalone server.js missing"; exit 1; }
           test -d deploy-dist/.next/standalone/node_modules || { echo "❌ Validation failed: standalone node_modules missing"; exit 1; }
           test -d deploy-dist/.next/standalone/.next/static || { echo "❌ Validation failed: standalone static missing"; exit 1; }
+          test -f deploy-dist/.next/BUILD_ID || { echo "❌ Validation failed: root .next/BUILD_ID missing"; exit 1; }
           test -f deploy-dist/app.js || { echo "❌ Validation failed: app.js missing"; exit 1; }
           test -f deploy-dist/tmp/restart.txt || { echo "❌ Validation failed: tmp/restart.txt missing"; exit 1; }
 
           echo "Artifact structure validated successfully!"
 
-          echo "6. Packing into a single archive for a fast, reliable FTP transfer..."
-          echo "   (uploading ~2,700 individual files one-by-one over FTP was taking 15+ minutes"
-          echo "    and was the previous bottleneck between build success and the health check)"
-          tar -czf deploy-package.tar.gz -C deploy-dist .
-          ls -lh deploy-package.tar.gz
-
       - name: 11. Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: deploy-package
-          path: deploy-package.tar.gz
+          name: deploy-dist
+          path: deploy-dist/
           retention-days: 1
+          include-hidden-files: true
 
   deploy-to-cpanel:
     name: Deploy to cPanel (FTPS & Passenger)
@@ -133,8 +138,8 @@ jobs:
       - name: 4. Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: deploy-package
-          path: .
+          name: deploy-dist
+          path: deploy-dist
 
       - name: 5. Deploy to cPanel via Node.js Secure FTPS
         env:

@@ -40,37 +40,6 @@ if (fs.existsSync(envFile)) {
 // 2. Set production environment
 process.env.NODE_ENV = "production";
 
-// 2.5. Self-extract a pending deployment package, if one was just uploaded.
-// The FTPS deploy step no longer mirrors ~2,700 individual build files one
-// by one (that took 15+ minutes and was the bottleneck before the health
-// check could even run) — it uploads ONE compressed archive plus this
-// file, then touches tmp/restart.txt. On restart, Passenger boots this
-// (already-current) app.js, which extracts the archive here before doing
-// anything else.
-const pendingPackage = path.join(__dirname, ".deploy-incoming.tar.gz");
-if (fs.existsSync(pendingPackage)) {
-  const { execFileSync } = require("child_process");
-  console.log("Found pending deployment package: " + pendingPackage + " — extracting...");
-  try {
-    execFileSync("tar", ["-xzf", pendingPackage, "-C", __dirname], { stdio: "inherit" });
-    console.log("Deployment package extracted successfully.");
-  } catch (err) {
-    console.error(
-      "Critical Error: failed to extract deployment package " + pendingPackage + ": " +
-      (err && err.message ? err.message : err)
-    );
-    // Leave the package in place so it can be inspected/retried, and don't
-    // boot on a possibly half-extracted build.
-    process.exit(1);
-  }
-  try {
-    fs.unlinkSync(pendingPackage);
-  } catch {
-    // Harmless if another concurrent Passenger worker already removed it
-    // after also extracting it — extraction above already succeeded.
-  }
-}
-
 // 3. Always boot the standalone server produced by the CI pipeline at
 //    .next/standalone/server.js. A legacy fallback to a root-level
 //    server.js used to live here; it was removed because a stray file
