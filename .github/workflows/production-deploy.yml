@@ -116,6 +116,7 @@ jobs:
           name: deploy-dist
           path: deploy-dist/
           retention-days: 1
+          include-hidden-files: true
 
   deploy-to-cpanel:
     name: Deploy to cPanel (FTPS & Passenger)
