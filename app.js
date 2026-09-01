@@ -40,28 +40,15 @@ if (fs.existsSync(envFile)) {
 // 2. Set production environment
 process.env.NODE_ENV = "production";
 
-// 3. Always boot the standalone server produced by the CI pipeline at
-//    .next/standalone/server.js. A legacy fallback to a root-level
-//    server.js used to live here; it was removed because a stray file
-//    left over from an old deployment approach could silently shadow
-//    every future deploy (the root file never gets updated once CI only
-//    ever produces .next/standalone/server.js), which caused Passenger
-//    to keep booting a broken/outdated build indefinitely.
+// 3. Locate standalone server (supports root server.js or .next/standalone/server.js)
+const rootServer = path.join(__dirname, "server.js");
 const standaloneServer = path.join(__dirname, ".next", "standalone", "server.js");
-const standaloneBuildId = path.join(__dirname, ".next", "standalone", ".next", "BUILD_ID");
 
-if (!fs.existsSync(standaloneBuildId)) {
-  console.error(
-    "Critical Error: No production build found at " + standaloneBuildId + "\n" +
-    "The deployment artifact is missing or incomplete (.next/standalone/.next/BUILD_ID not found).\n" +
-    "Re-run the GitHub Actions deployment workflow — check the 'Deploy to cPanel' job log for details."
-  );
-  process.exit(1);
-}
-
-if (fs.existsSync(standaloneServer)) {
+if (fs.existsSync(rootServer)) {
+  require(rootServer);
+} else if (fs.existsSync(standaloneServer)) {
   require(standaloneServer);
 } else {
-  console.error("Critical Error: server.js not found at " + standaloneServer);
+  console.error("Critical Error: server.js not found in " + __dirname + " or " + standaloneServer);
   process.exit(1);
 }
