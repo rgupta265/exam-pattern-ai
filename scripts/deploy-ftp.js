@@ -9,7 +9,6 @@ async function deploy() {
   const user = process.env.CPANEL_FTP_USERNAME || process.env.CPANEL_USERNAME || "rupakgup";
   const password = process.env.CPANEL_FTP_PASSWORD || process.env.CPANEL_PASSWORD;
   const port = parseInt(process.env.CPANEL_FTP_PORT || "21", 10);
-  const targetDir = process.env.CPANEL_FTP_APP_DIR || "./";
 
   console.log(`Connecting via Secure FTPS to ${host}:${port} as ${user}...`);
 
@@ -26,11 +25,21 @@ async function deploy() {
     });
 
     console.log("FTPS Connection Established!");
-    console.log(`Current remote directory: ${await client.pwd()}`);
+    const initialDir = await client.pwd();
+    console.log(`Initial remote directory: ${initialDir}`);
 
-    if (targetDir && targetDir !== "./" && targetDir !== "/") {
-      await client.cd(targetDir);
-      console.log(`Changed remote directory to: ${await client.pwd()}`);
+    // Auto-detect if we are in /home/user or already in subdomain root
+    const remoteList = await client.list();
+    const hasSubdomainFolder = remoteList.some(
+      (item) => item.name === "aiexam.rupakgupta.com" && (item.isDirectory || item.type === 2)
+    );
+
+    if (hasSubdomainFolder) {
+      console.log("Detected subdomain folder 'aiexam.rupakgupta.com'. Entering target directory...");
+      await client.cd("aiexam.rupakgupta.com");
+      console.log(`Target remote directory is now: ${await client.pwd()}`);
+    } else {
+      console.log(`Currently already in application target directory: ${await client.pwd()}`);
     }
 
     const localDir = path.resolve("deploy-dist");
@@ -38,7 +47,10 @@ async function deploy() {
 
     await client.uploadFromDir(localDir);
 
-    console.log("All files and directories (including .next) uploaded successfully!");
+    console.log("==================================================");
+    console.log("All files and folders successfully deployed to cPanel!");
+    console.log("Remote location:", await client.pwd());
+    console.log("==================================================");
   } catch (err) {
     console.error("FTPS Deployment Error:", err);
     process.exit(1);
