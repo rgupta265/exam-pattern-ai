@@ -36,13 +36,15 @@ if (fs.existsSync(envFile)) {
 // 2. Set production environment
 process.env.NODE_ENV = "production";
 
-// 3. Locate standalone server
-const standaloneServerPath = path.join(__dirname, ".next", "standalone", "server.js");
+// 3. Locate standalone server (supports root server.js or .next/standalone/server.js)
+const rootServer = path.join(__dirname, "server.js");
+const standaloneServer = path.join(__dirname, ".next", "standalone", "server.js");
 
-if (fs.existsSync(standaloneServerPath)) {
-  // Delegate directly to Next.js standalone production server
-  require(standaloneServerPath);
+if (fs.existsSync(rootServer)) {
+  require(rootServer);
+} else if (fs.existsSync(standaloneServer)) {
+  require(standaloneServer);
 } else {
-  console.error("Critical Error: .next/standalone/server.js not found at " + standaloneServerPath);
+  console.error("Critical Error: server.js not found in " + __dirname + " or " + standaloneServer);
   process.exit(1);
 }
