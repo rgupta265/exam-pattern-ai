@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { BookOpen, ShieldCheck, Cpu, ArrowRight, CheckCircle2, Compass, LayoutDashboard, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/common/language-switcher";
+import { DigitalClock } from "@/components/common/digital-clock";
 import { Locale, getTranslations, localizePath } from "@/lib/i18n";
 import { getServerSession } from "@/lib/auth";
 
@@ -165,8 +166,11 @@ export default async function HomePage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-6 px-4 text-center text-xs text-slate-500">
-        <p>{t("home.footerText")}</p>
+      <footer className="border-t border-slate-200 bg-white py-8 px-4 text-center text-xs text-slate-500">
+        <div className="max-w-5xl mx-auto flex flex-col items-center gap-4">
+          <DigitalClock />
+          <p>{t("home.footerText")}</p>
+        </div>
       </footer>
     </div>
   );
