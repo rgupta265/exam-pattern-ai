@@ -1,9 +1,13 @@
 ﻿// ==========================================
 // ExamPattern AI — Passenger Startup Wrapper
 // ==========================================
-// This file serves as the entry point for Phusion Passenger in cPanel.
-// It initializes and boots the Next.js production server.
+// This file serves as the entry point for Phusion Passenger / LiteSpeed in cPanel.
+// It initializes and boots the Next.js production server with resource limits.
 /* eslint-disable @typescript-eslint/no-require-imports */
+
+// Limit threadpool size to prevent hitting CloudLinux NPROC / pthread limits
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || "2";
+process.env.PRISMA_CLIENT_ENGINE_TYPE = process.env.PRISMA_CLIENT_ENGINE_TYPE || "library";
 
 const fs = require("fs");
 const path = require("path");
