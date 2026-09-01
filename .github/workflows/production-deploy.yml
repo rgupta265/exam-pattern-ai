@@ -1,4 +1,4 @@
-﻿name: Production Deployment
+name: Production Deployment
 
 on:
   push:
@@ -120,7 +120,7 @@ jobs:
           protocol: ftps
           security: loose
           local-dir: ./deploy-dist/
-          server-dir: ./${{ secrets.CPANEL_FTP_APP_DIR || 'aiexam.rupakgupta.com' }}/
+          server-dir: ${{ secrets.CPANEL_FTP_APP_DIR || './' }}
           dangerous-clean-slate: false
           exclude: |
             **/.env*
