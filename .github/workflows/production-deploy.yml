@@ -194,12 +194,3 @@ jobs:
           echo "Commit: ${{ github.sha }}"
           echo "URL: https://aiexam.rupakgupta.com"
           echo "=================================================="
-
-      - name: 7. Diagnose on failure (fetch remote stderr.log / stdout.log)
-        if: failure()
-        env:
-          CPANEL_FTP_SERVER: ${{ secrets.CPANEL_FTP_SERVER || secrets.CPANEL_HOST || '103.224.246.193' }}
-          CPANEL_FTP_USERNAME: ${{ secrets.CPANEL_FTP_USERNAME || secrets.CPANEL_USERNAME || 'rupakgup' }}
-          CPANEL_FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD || secrets.CPANEL_PASSWORD }}
-          CPANEL_FTP_PORT: ${{ secrets.CPANEL_FTP_PORT || 21 }}
-        run: node scripts/fetch-remote-log.js
