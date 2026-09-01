@@ -2,6 +2,10 @@ const ftp = require("basic-ftp");
 const path = require("path");
 const fs = require("fs");
 
+// Remote name the deployment package is uploaded under. app.js looks for
+// exactly this file on startup and self-extracts it — see app.js.
+const REMOTE_PACKAGE_NAME = ".deploy-incoming.tar.gz";
+
 // Paths that were produced by earlier/abandoned deployment approaches and can
 // still be sitting in the app root from before this pipeline existed. They
 // are never touched by the current artifact, so once created they linger
@@ -15,16 +19,6 @@ const LEGACY_REMOTE_PATHS = [
   { path: "exampattern-standalone-artifact.zip", type: "file" },
   { path: ".git", type: "dir" },
   { path: ".ftp-deploy-sync-state.json", type: "file" },
-];
-
-// Files that must exist on the remote server (with a sane minimum size) once
-// the upload finishes, or the deployment is not actually usable even though
-// the FTP transfer itself reported no errors.
-const REQUIRED_REMOTE_FILES = [
-  { path: ".next/standalone/server.js", minBytes: 100 },
-  { path: ".next/standalone/.next/BUILD_ID", minBytes: 1 },
-  { path: ".next/standalone/.next/routes-manifest.json", minBytes: 100 },
-  { path: "app.js", minBytes: 100 },
 ];
 
 async function removeLegacyPaths(client) {
@@ -43,32 +37,8 @@ async function removeLegacyPaths(client) {
   }
 }
 
-async function verifyRemoteDeployment(client) {
-  console.log("Verifying uploaded build on the remote server...");
-  const missing = [];
-  for (const file of REQUIRED_REMOTE_FILES) {
-    try {
-      const size = await client.size(file.path);
-      if (size < file.minBytes) {
-        missing.push(`${file.path} (found ${size} bytes, expected at least ${file.minBytes})`);
-      } else {
-        console.log(`  OK: ${file.path} (${size} bytes)`);
-      }
-    } catch (err) {
-      missing.push(`${file.path} (${err.message || "not found"})`);
-    }
-  }
-  if (missing.length > 0) {
-    throw new Error(
-      "Deployment verification FAILED — the following required files are missing or too small on the remote server:\n" +
-        missing.map((m) => `  - ${m}`).join("\n")
-    );
-  }
-  console.log("Deployment verification: PASS — all required build files are present on the server.");
-}
-
 async function connect() {
-  const client = new ftp.Client(30_000); // 30s idle timeout, generous for a ~2,700 file tree
+  const client = new ftp.Client(60_000);
   client.ftp.verbose = true;
 
   const host = process.env.CPANEL_FTP_SERVER || process.env.CPANEL_HOST || "103.224.246.193";
@@ -109,12 +79,63 @@ async function connect() {
   return client;
 }
 
+async function deployOnce(localPackagePath, appJsPath) {
+  const localSize = fs.statSync(localPackagePath).size;
+  const client = await connect();
+  try {
+    await removeLegacyPaths(client);
+
+    // Upload app.js directly (a few KB) so the self-extraction logic below
+    // is always current, even on the very first run of this new pipeline
+    // before any tarball has ever been extracted.
+    console.log("Uploading app.js (Passenger startup wrapper)...");
+    await client.uploadFrom(appJsPath, "app.js");
+
+    // Upload the ENTIRE build as a single compressed archive instead of
+    // mirroring ~2,700 individual files over FTP one by one — that was
+    // taking 15+ minutes and was the bottleneck before the health check
+    // could even run. A single file transfer takes seconds.
+    console.log(`Uploading deployment package (${(localSize / 1024 / 1024).toFixed(1)} MB) as ${REMOTE_PACKAGE_NAME}...`);
+    await client.uploadFrom(localPackagePath, REMOTE_PACKAGE_NAME);
+
+    const remoteSize = await client.size(REMOTE_PACKAGE_NAME);
+    if (remoteSize !== localSize) {
+      throw new Error(
+        `Uploaded package size mismatch: local ${localSize} bytes vs remote ${remoteSize} bytes — transfer likely truncated.`
+      );
+    }
+    console.log(`Verified package on server: ${remoteSize} bytes (matches local).`);
+
+    // Touch the Passenger restart signal LAST. app.js extracts the package
+    // on its next boot, so the restart must happen only after the package
+    // has been fully verified on the server.
+    console.log("Writing Passenger restart signal (tmp/restart.txt)...");
+    const restartContents = Buffer.from(`Deployment: ${new Date().toISOString()}\n`);
+    const remoteCwd = await client.pwd();
+    await client.ensureDir("tmp"); // creates tmp/ if needed and cd's into it
+    const tmpStream = require("stream").Readable.from(restartContents);
+    await client.uploadFrom(tmpStream, "restart.txt");
+    await client.cd(remoteCwd);
+
+    console.log("==================================================");
+    console.log("Package and restart signal deployed to cPanel!");
+    console.log("Passenger will extract the package and reload on its next request.");
+    console.log("==================================================");
+  } finally {
+    client.close();
+  }
+}
+
 async function deploy() {
-  const localDir = path.resolve("deploy-dist");
-  if (!fs.existsSync(path.join(localDir, ".next", "standalone", "server.js"))) {
-    console.error(
-      `FATAL: ${localDir} does not contain .next/standalone/server.js — the build artifact is incomplete. Aborting before touching the remote server.`
-    );
+  const packagePath = path.resolve(process.env.DEPLOY_PACKAGE_PATH || "deploy-package.tar.gz");
+  const appJsPath = path.resolve("app.js");
+
+  if (!fs.existsSync(packagePath)) {
+    console.error(`FATAL: deployment package not found at ${packagePath}. Aborting before touching the remote server.`);
+    process.exit(1);
+  }
+  if (!fs.existsSync(appJsPath)) {
+    console.error(`FATAL: app.js not found at ${appJsPath}. Aborting before touching the remote server.`);
     process.exit(1);
   }
 
@@ -122,26 +143,12 @@ async function deploy() {
   let lastError;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const client = await connect();
     try {
-      await removeLegacyPaths(client);
-
-      console.log(`Uploading all files and folders (including .next) from: ${localDir}...`);
-      await client.uploadFromDir(localDir);
-      console.log("Upload transfer completed without a transport error.");
-
-      await verifyRemoteDeployment(client);
-
-      console.log("==================================================");
-      console.log("All files and folders successfully deployed to cPanel!");
-      console.log("Remote location:", await client.pwd());
-      console.log("==================================================");
-      client.close();
+      await deployOnce(packagePath, appJsPath);
       return;
     } catch (err) {
       lastError = err;
       console.error(`Deployment attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err.message || err);
-      client.close();
       if (attempt < MAX_ATTEMPTS) {
         const backoffMs = 5000 * attempt;
         console.log(`Retrying in ${backoffMs / 1000}s...`);
