@@ -55,6 +55,10 @@ jobs:
           echo "Validating standalone build..."
           test -f .next/standalone/server.js || { echo "❌ Missing .next/standalone/server.js"; exit 1; }
 
+          echo "Preparing deployment distribution folder..."
+          rm -rf deploy-dist
+          mkdir -p deploy-dist/.next deploy-dist/tmp
+
           echo "Copying static assets into standalone output..."
           mkdir -p .next/standalone/.next
           cp -r .next/static .next/standalone/.next/static
@@ -82,8 +86,6 @@ jobs:
             cp app.js .next/standalone/app.js
           fi
 
-          echo "Preparing deployment distribution folder..."
-          mkdir -p deploy-dist/.next deploy-dist/tmp
           cp -r .next/standalone deploy-dist/.next/
           cp app.js deploy-dist/app.js
           echo "Deployment timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC') - Commit: ${{ github.sha }}" > deploy-dist/tmp/restart.txt
@@ -126,7 +128,7 @@ jobs:
           protocol: ftps
           security: loose
           local-dir: ./deploy-dist/
-          server-dir: ./${{ secrets.CPANEL_FTP_APP_DIR || 'aiexam.rupakgupta.com' }}/
+          server-dir: ./
           dangerous-clean-slate: false
           exclude: |
             **/.env*
