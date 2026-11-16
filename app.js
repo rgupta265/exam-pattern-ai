@@ -1,54 +1,66 @@
-﻿// ==========================================
+// ==========================================
 // ExamPattern AI — Passenger Startup Wrapper
 // ==========================================
-// This file serves as the entry point for Phusion Passenger / LiteSpeed in cPanel.
-// It initializes and boots the Next.js production server with resource limits.
+// This file serves as the entry point for Phusion Passenger in cPanel.
+// It initializes and boots the Next.js production server.
 /* eslint-disable @typescript-eslint/no-require-imports */
-
-// Limit threadpool size to prevent hitting CloudLinux NPROC / pthread limits
-process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || "2";
-process.env.PRISMA_CLIENT_ENGINE_TYPE = process.env.PRISMA_CLIENT_ENGINE_TYPE || "library";
 
 const fs = require("fs");
 const path = require("path");
 
-// 1. Manually parse .env without external dependencies
-const envFile = path.join(__dirname, ".env");
-if (fs.existsSync(envFile)) {
+// Load .env from application root if present
+const rootEnvPath = path.join(__dirname, ".env");
+if (fs.existsSync(rootEnvPath)) {
   try {
-    const lines = fs.readFileSync(envFile, "utf8").split(/\r?\n/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx > 0) {
-        const key = trimmed.slice(0, eqIdx).trim();
-        let val = trimmed.slice(eqIdx + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = val;
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Error reading .env:", e);
+    const dotenv = require("dotenv");
+    dotenv.config({ path: rootEnvPath });
+  } catch {
+    // If dotenv module is not in global scope, environment variables are already in process.env
   }
 }
 
-// 2. Set production environment
-process.env.NODE_ENV = "production";
+const standaloneServerPath = path.join(__dirname, ".next", "standalone", "server.js");
 
-// 3. Locate standalone server (supports root server.js or .next/standalone/server.js)
-const rootServer = path.join(__dirname, "server.js");
-const standaloneServer = path.join(__dirname, ".next", "standalone", "server.js");
-
-if (fs.existsSync(rootServer)) {
-  require(rootServer);
-} else if (fs.existsSync(standaloneServer)) {
-  require(standaloneServer);
+if (fs.existsSync(standaloneServerPath)) {
+  // Execute Next.js standalone production server
+  require(standaloneServerPath);
 } else {
-  console.error("Critical Error: server.js not found in " + __dirname + " or " + standaloneServer);
-  process.exit(1);
-}
+  const next = require("next");
+  const http = require("http");
+
+  const port = parseInt(process.env.PORT || "3000", 10);
+  const hostname = process.env.HOSTNAME || "127.0.0.1";
+
+  const app = next({
+    dev: false,
+    hostname,
+    port,
+  });
+
+    const handle = app.getRequestHandler();
+
+    app
+      .prepare()
+      .then(() => {
+        const server = http.createServer(async (req, res) => {
+          try {
+            await handle(req, res);
+          } catch (error) {
+            console.error("Next.js request error:", error);
+
+            if (!res.headersSent) {
+              res.statusCode = 500;
+              res.end("Internal Server Error");
+            }
+          }
+        });
+
+        server.listen(port, hostname, () => {
+          console.log(`> ExamPattern AI Next.js running on http://${hostname}:${port}`);
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to start ExamPattern AI server:", err);
+        process.exit(1);
+      });
+  }

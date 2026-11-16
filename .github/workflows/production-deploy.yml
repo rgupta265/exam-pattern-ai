@@ -52,60 +52,46 @@ jobs:
 
       - name: 10. Assemble and validate standalone deployment bundle
         run: |
-          echo "Validating build output..."
-          test -f .next/BUILD_ID || { echo "❌ Missing .next/BUILD_ID"; exit 1; }
+          echo "Validating standalone build..."
           test -f .next/standalone/server.js || { echo "❌ Missing .next/standalone/server.js"; exit 1; }
 
-          echo "Preparing clean deployment distribution..."
-          rm -rf deploy-dist
-          mkdir -p deploy-dist/.next/standalone/.next deploy-dist/tmp
+          echo "Copying static assets into standalone output..."
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/static
 
-          echo "1. Copying standalone base files..."
-          cp -r .next/standalone/* deploy-dist/.next/standalone/
-
-          echo "2. Copying complete .next artifacts (static, server, BUILD_ID, manifests) into standalone/.next..."
-          cp -r .next/static deploy-dist/.next/standalone/.next/static
-          cp -r .next/server deploy-dist/.next/standalone/.next/server
-          cp .next/BUILD_ID deploy-dist/.next/standalone/.next/BUILD_ID
-          cp .next/*.json deploy-dist/.next/standalone/.next/
-
-          echo "3. Populating root .next directory..."
-          cp -r .next/static deploy-dist/.next/static
-          cp -r .next/server deploy-dist/.next/server
-          cp .next/BUILD_ID deploy-dist/.next/BUILD_ID
-          cp .next/*.json deploy-dist/.next/
-
-          echo "4. Copying application assets (public, messages, prisma)..."
           if [ -d "public" ]; then
+            echo "Copying public directory..."
+            cp -r public .next/standalone/
             cp -r public deploy-dist/
-            cp -r public deploy-dist/.next/standalone/
           fi
 
           if [ -d "messages" ]; then
+            echo "Copying messages directory..."
+            cp -r messages .next/standalone/
             cp -r messages deploy-dist/
-            cp -r messages deploy-dist/.next/standalone/
           fi
 
           if [ -d "prisma" ]; then
+            echo "Copying prisma directory..."
+            cp -r prisma .next/standalone/
             cp -r prisma deploy-dist/
-            cp -r prisma deploy-dist/.next/standalone/
           fi
 
-          echo "5. Copying app.js startup wrapper..."
-          cp app.js deploy-dist/app.js
-          cp app.js deploy-dist/.next/standalone/app.js
+          if [ -f "app.js" ]; then
+            echo "Copying app.js startup wrapper..."
+            cp app.js .next/standalone/app.js
+          fi
 
-          echo "6. Writing restart signal..."
+          echo "Preparing deployment distribution folder..."
+          mkdir -p deploy-dist/.next deploy-dist/tmp
+          cp -r .next/standalone deploy-dist/.next/
+          cp app.js deploy-dist/app.js
           echo "Deployment timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC') - Commit: ${{ github.sha }}" > deploy-dist/tmp/restart.txt
 
-          echo "Validating final deployment distribution..."
-          test -f deploy-dist/.next/standalone/.next/BUILD_ID || { echo "❌ Validation failed: .next/standalone/.next/BUILD_ID missing"; exit 1; }
-          test -f deploy-dist/.next/standalone/.next/routes-manifest.json || { echo "❌ Validation failed: routes-manifest.json missing"; exit 1; }
-          test -f deploy-dist/.next/standalone/server.js || { echo "❌ Validation failed: standalone server.js missing"; exit 1; }
-          test -d deploy-dist/.next/standalone/node_modules || { echo "❌ Validation failed: standalone node_modules missing"; exit 1; }
-          test -d deploy-dist/.next/standalone/.next/static || { echo "❌ Validation failed: standalone static missing"; exit 1; }
-          test -f deploy-dist/.next/BUILD_ID || { echo "❌ Validation failed: root .next/BUILD_ID missing"; exit 1; }
-          test -f deploy-dist/app.js || { echo "❌ Validation failed: app.js missing"; exit 1; }
+          echo "Validating final standalone bundle structure..."
+          test -f deploy-dist/.next/standalone/server.js || { echo "❌ Validation failed: server.js missing"; exit 1; }
+          test -d deploy-dist/.next/standalone/.next/static || { echo "❌ Validation failed: .next/static missing"; exit 1; }
+          test -f deploy-dist/app.js || { echo "❌ Validation failed: root app.js missing"; exit 1; }
           test -f deploy-dist/tmp/restart.txt || { echo "❌ Validation failed: tmp/restart.txt missing"; exit 1; }
 
           echo "Artifact structure validated successfully!"
@@ -115,6 +101,7 @@ jobs:
         with:
           name: deploy-dist
           path: deploy-dist/
+          include-hidden-files: true
           retention-days: 1
 
   deploy-to-cpanel:
@@ -123,43 +110,40 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Checkout repository for deployment script
-        uses: actions/checkout@v4
-
-      - name: 2. Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: 3. Install basic-ftp
-        run: npm install basic-ftp
-
-      - name: 4. Download build artifact
+      - name: 1. Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: deploy-dist
           path: deploy-dist
 
-      - name: 5. Deploy to cPanel via Node.js Secure FTPS
-        env:
-          CPANEL_FTP_SERVER: ${{ secrets.CPANEL_FTP_SERVER || secrets.CPANEL_HOST || '103.224.246.193' }}
-          CPANEL_FTP_USERNAME: ${{ secrets.CPANEL_FTP_USERNAME || secrets.CPANEL_USERNAME || 'rupakgup' }}
-          CPANEL_FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD || secrets.CPANEL_PASSWORD }}
-          CPANEL_FTP_PORT: ${{ secrets.CPANEL_FTP_PORT || 21 }}
-          CPANEL_FTP_APP_DIR: ${{ secrets.CPANEL_FTP_APP_DIR || './' }}
-        run: node scripts/deploy-ftp.js
+      - name: 2. Deploy to cPanel via Secure FTPS (Port 21)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.CPANEL_FTP_SERVER || secrets.CPANEL_HOST || '103.224.246.193' }}
+          username: ${{ secrets.CPANEL_FTP_USERNAME || secrets.CPANEL_USERNAME || 'rupakgup' }}
+          password: ${{ secrets.CPANEL_FTP_PASSWORD || secrets.CPANEL_PASSWORD }}
+          port: ${{ secrets.CPANEL_FTP_PORT || 21 }}
+          protocol: ftps
+          security: loose
+          local-dir: ./deploy-dist/
+          server-dir: ./${{ secrets.CPANEL_FTP_APP_DIR || 'aiexam.rupakgupta.com' }}/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.env*
+            **/storage/**
+            **/node_modules/**
 
-      - name: 6. Health Check & Verification
+      - name: 3. Health Check & Verification
         env:
           HEALTH_URL: "https://aiexam.rupakgupta.com/api/health"
           LOGIN_URL: "https://aiexam.rupakgupta.com/en/login"
         run: |
-          echo "Waiting 12 seconds for Passenger application worker to reload..."
-          sleep 12
+          echo "Waiting 10 seconds for Passenger application worker to detect restart.txt and reload..."
+          sleep 10
 
           HEALTH_PASSED=false
-          for i in {1..8}; do
-            echo "Health check attempt $i/8: Requesting $HEALTH_URL..."
+          for i in {1..6}; do
+            echo "Health check attempt $i/6: Requesting $HEALTH_URL..."
             HTTP_STATUS=$(curl -s -o /tmp/health_response.json -w "%{http_code}" "$HEALTH_URL" || echo "000")
             echo "HTTP Status: $HTTP_STATUS"
 
@@ -175,7 +159,7 @@ jobs:
           done
 
           if [ "$HEALTH_PASSED" != "true" ]; then
-            echo "❌ Health check FAILED after 8 attempts!"
+            echo "❌ Health check FAILED after 6 attempts!"
             exit 1
           fi
 
