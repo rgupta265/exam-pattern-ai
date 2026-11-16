@@ -13,8 +13,12 @@ Exam Category
                           └── Syllabus
 ```
 
-*Example:*
+*Example 1 (Healthcare Domain):*
 `Government Jobs` → `UP Health Officer Examination` → `2026 Regular` → `UP-CHO-2026-Notification.pdf` → `Official UP CHO Full Exam Blueprint` → `Official UP CHO Syllabus 2026`
+
+*Example 2 (Judicial Technical Multi-Stage Domain):*
+- **Stage 1 Written Test:** `Government Jobs` → `Supreme Court TAP — Stage 1 (General Aptitude & English)` (`SCI-TAP-S1`) → `2026 Regular` → `Official Supreme Court TAP Stage 1 Objective Written Blueprint` (100 Qs / 100 Marks) → `Official Supreme Court TAP Stage 1 Syllabus 2026`
+- **Stage 2 Technical Test:** `Government Jobs` → `Supreme Court TAP — Stage 2 (Technical Aptitude Test)` (`SCI-TAP-S2`) → `2026 Regular` → `Official Supreme Court TAP Stage 2 Technical Aptitude Blueprint` (50 Qs / 50 Marks) → `Official Supreme Court TAP Stage 2 Technical Syllabus 2026`
 
 ---
 

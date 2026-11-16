@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { MockEngineService } from "@/services/mock/mock-engine.service";
-import { generateTopicMockRequestSchema, mockFilterSchema } from "@/modules/mock/schemas/mock.schema";
+import {
+  generateFullMockRequestSchema,
+  generateTopicMockRequestSchema,
+  mockFilterSchema,
+} from "@/modules/mock/schemas/mock.schema";
 import { errorResponse, successResponse } from "@/lib/response";
 import { getServerSession } from "@/lib/auth";
 import { UnauthorizedError } from "@/lib/errors";
@@ -77,19 +81,28 @@ export async function POST(req: NextRequest) {
     if (!session) throw new UnauthorizedError();
 
     const body = await req.json();
-    const validated = generateTopicMockRequestSchema.parse(body);
-
     const ip = req.headers.get("x-forwarded-for") || undefined;
     const userAgent = req.headers.get("user-agent") || undefined;
 
-    const mockTest = await MockEngineService.generateTopicPracticeMock(
-      validated,
-      session,
-      ip,
-      userAgent
-    );
-
-    return successResponse({ mockTest }, 201);
+    if (body.type === "FULL_MOCK") {
+      const validated = generateFullMockRequestSchema.parse(body);
+      const result = await MockEngineService.generateFullExamMock(
+        validated,
+        session,
+        ip,
+        userAgent
+      );
+      return successResponse({ mockTest: (result as { mockTest?: unknown }).mockTest || result }, 201);
+    } else {
+      const validated = generateTopicMockRequestSchema.parse(body);
+      const mockTest = await MockEngineService.generateTopicPracticeMock(
+        validated,
+        session,
+        ip,
+        userAgent
+      );
+      return successResponse({ mockTest }, 201);
+    }
   } catch (error) {
     return errorResponse(error);
   }

@@ -21,6 +21,7 @@ export const mockGenerationModeEnum = z.enum(["FULL_PATTERN", "QUICK"]);
 export type MockGenerationMode = z.infer<typeof mockGenerationModeEnum>;
 
 export const generateFullMockRequestSchema = z.object({
+  type: z.literal("FULL_MOCK").optional(),
   examVersionId: z.string().uuid("Invalid exam version ID"),
   blueprintId: z.string().uuid().optional(),
   title: z.string().optional(),
@@ -39,6 +40,7 @@ export const patternSummaryQuerySchema = z.object({
 export type PatternSummaryQueryInput = z.infer<typeof patternSummaryQuerySchema>;
 
 export const generateTopicMockRequestSchema = z.object({
+  type: z.literal("TOPIC_PRACTICE").optional(),
   examVersionId: z.string().uuid("Invalid exam version ID"),
   topicId: z.string().uuid("Invalid topic ID"),
   questionCount: z.number().int().min(5, "Minimum 5 questions").max(100, "Maximum 100 questions").default(20),

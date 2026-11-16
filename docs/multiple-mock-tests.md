@@ -4,11 +4,22 @@
 In ExamPattern AI, every **Exam Version** supports an unlimited sequence of independent mock tests (e.g. Mock 1, Mock 2, Mock 3...).
 
 ```
-Exam: UP Health Officer (2026 Regular)
+Exam 1: UP Health Officer (2026 Regular)
  ├── UPHO-2026-MOCK-001 (Full Blueprint Mock 1)
  ├── UPHO-2026-MOCK-002 (Full Blueprint Mock 2)
  ├── UPHO-2026-MOCK-003 (Full Blueprint Mock 3)
  └── UPHO-2026-TOPIC-001 (Community Health Nursing Drill)
+
+Exam 2: Supreme Court TAP — Stage 1 General Aptitude (2026 Regular)
+ ├── SCITAP-S1-MOCK-001 (Full Blueprint Mock 1)
+ ├── SCITAP-S1-MOCK-002 (Full Blueprint Mock 2)
+ └── SCITAP-S1-TOPIC-001 (English Grammar Mastery Drill)
+
+Exam 3: Supreme Court TAP — Stage 2 Technical Aptitude (2026 Regular)
+ ├── SCITAP-S2-MOCK-001 (Full Technical Mock 1)
+ ├── SCITAP-S2-MOCK-002 (Full Technical Mock 2)
+ ├── SCITAP-S2-TOPIC-001 (Data Structures & Algorithms Drill)
+ └── SCITAP-S2-TOPIC-002 (DBMS & SQL Query Mastery Drill)
 ```
 
 ## 2. Unique Tracking Identifiers

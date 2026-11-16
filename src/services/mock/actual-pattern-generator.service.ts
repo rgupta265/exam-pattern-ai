@@ -249,13 +249,16 @@ export class ActualPatternGeneratorService {
     ip?: string;
     userAgent?: string;
   }) {
-    RbacService.requirePermission(params.user, PERMISSIONS.MOCK_CREATE);
+    const isCandidate = params.user.roles?.includes("CANDIDATE") || (params.user as { role?: string }).role === "CANDIDATE";
+    if (!isCandidate) {
+      RbacService.requirePermission(params.user, PERMISSIONS.MOCK_CREATE);
+    }
 
     const isFullPattern = (params.generationMode || "FULL_PATTERN") === "FULL_PATTERN";
     const generateMissingWithAi = params.generateMissingWithAi !== false; // Default true
 
-    // Idempotency lock
-    const lockKey = `actual-pattern-${params.examVersionId}`;
+    // Idempotency lock per exam version and user
+    const lockKey = `actual-pattern-${params.examVersionId}-${params.user.id}`;
     if (this.activeGenerations.has(lockKey)) {
       throw new BadRequestError("A mock generation job is already in progress for this exam version. Please wait.");
     }
@@ -393,7 +396,37 @@ export class ActualPatternGeneratorService {
             });
           }
 
-          const missingForTopic = targetTopicCount - existingQuestions.length;
+          let missingForTopic = targetTopicCount - existingQuestions.length;
+
+          // If topic has shortfall, pull available questions from other topics in the same verified section
+          if (missingForTopic > 0) {
+            const sectionTopicIds = plannedSec.topicAllocations.map((a) => a.topicId);
+            const extraSectionQuestions = await prisma.question.findMany({
+              where: {
+                topicId: { in: sectionTopicIds },
+                status: "APPROVED",
+                deletedAt: null,
+                id: { notIn: Array.from(seenQuestionIds) },
+              },
+              take: missingForTopic,
+              include: { options: { orderBy: { sortOrder: "asc" } } },
+            });
+
+            for (const exQ of extraSectionQuestions) {
+              seenQuestionIds.add(exQ.id);
+              await prisma.mockTestQuestion.create({
+                data: {
+                  mockTestId: mockTest.id,
+                  mockTestSectionId: mockSec.id,
+                  questionId: exQ.id,
+                  questionOrder: overallQuestionOrder++,
+                  marks: new Prisma.Decimal(plannedSec.marksPerQuestion),
+                  negativeMarks: new Prisma.Decimal(plannedSec.negativeRate),
+                },
+              });
+            }
+            missingForTopic -= extraSectionQuestions.length;
+          }
 
           // 5b. Generate remaining missing questions with AI if needed
           if (missingForTopic > 0 && generateMissingWithAi) {

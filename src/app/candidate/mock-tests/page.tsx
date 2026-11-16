@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   FileCheck,
@@ -11,12 +11,25 @@ import {
   Clock,
   ShieldCheck,
   Play,
+  Sparkles,
+  Search,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getLocaleFromPath, localizePath, getTranslations } from "@/lib/i18n";
 import { useLoading } from "@/components/common/loading-overlay";
+
+interface BlueprintSection {
+  id: string;
+  name: string;
+  sectionOrder: number;
+  questionCount: number;
+  marksPerQuestion?: number | string;
+  negativeRate?: number | string;
+}
 
 interface ExamData {
   id: string;
@@ -25,12 +38,20 @@ interface ExamData {
   versions: {
     id: string;
     versionName: string;
-    blueprints: { id: string; title: string; totalQuestions: number; durationMinutes: number }[];
+    blueprints: {
+      id: string;
+      title: string;
+      totalQuestions: number;
+      durationMinutes: number;
+      totalMarks?: number | string;
+      negativeMarkingRate?: number | string;
+      sections?: BlueprintSection[];
+    }[];
     syllabi: {
       sections: {
         id: string;
         name: string;
-        topics: { id: string; name: string }[];
+        topics: { id: string; name: string; code?: string }[];
       }[];
     }[];
   }[];
@@ -80,8 +101,13 @@ export default function CandidateMockTestsPage() {
   const [selectedExamId, setSelectedExamId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [selectedTopicId, setSelectedTopicId] = useState("");
-  const [topicQCount, setTopicQCount] = useState(20);
+  const [topicQCount, setTopicQCount] = useState<number>(20);
   const [topicDifficulty, setTopicDifficulty] = useState<"EASY" | "MEDIUM" | "HARD">("MEDIUM");
+  const [topicLanguage, setTopicLanguage] = useState<string>("English");
+
+  // Catalog Filters
+  const [filterType, setFilterType] = useState<"ALL" | "FULL_MOCK" | "TOPIC_PRACTICE">("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [isLoading, setIsLoading] = useState(true);
   const [startError, setStartError] = useState<string | null>(null);
@@ -90,7 +116,7 @@ export default function CandidateMockTestsPage() {
     setIsLoading(true);
     try {
       const [mocksRes, examsRes] = await Promise.all([
-        fetch("/api/candidate/mock-tests?pageSize=30"),
+        fetch("/api/candidate/mock-tests?pageSize=50"),
         fetch("/api/exams?candidate=true&pageSize=30"),
       ]);
 
@@ -123,9 +149,13 @@ export default function CandidateMockTestsPage() {
     loadData();
   }, [loadData]);
 
-  const currentExam = exams.find((e) => e.id === selectedExamId);
-  const currentVersion = currentExam?.versions?.find((v) => v.id === selectedVersionId);
-  const topicsList = currentVersion?.syllabi?.[0]?.sections?.flatMap((s) => s.topics) || [];
+  const currentExam = useMemo(() => exams.find((e) => e.id === selectedExamId), [exams, selectedExamId]);
+  const currentVersion = useMemo(
+    () => currentExam?.versions?.find((v) => v.id === selectedVersionId) || currentExam?.versions?.[0],
+    [currentExam, selectedVersionId]
+  );
+  const currentBlueprint = currentVersion?.blueprints?.[0];
+  const syllabusSections = useMemo(() => currentVersion?.syllabi?.[0]?.sections || [], [currentVersion]);
 
   const handleStartExam = async (mockId: string) => {
     setStartError(null);
@@ -174,9 +204,10 @@ export default function CandidateMockTestsPage() {
     }, t("common.loading", "Initializing fresh examination attempt..."));
   };
 
-  const handleGenerateTopicMock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVersionId || !selectedTopicId) return;
+  // Generate 100% Syllabus-Accurate Full Exam Mock Test
+  const handleGenerateFullMock = async () => {
+    if (!selectedVersionId) return;
+    setStartError(null);
 
     await withLoading(async () => {
       try {
@@ -184,22 +215,76 @@ export default function CandidateMockTestsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            type: "FULL_MOCK",
             examVersionId: selectedVersionId,
-            topicId: selectedTopicId,
-            questionCount: topicQCount,
-            difficulty: topicDifficulty,
+            generationMode: "FULL_PATTERN",
+            generateMissingWithAi: true,
           }),
         });
 
         const data = await res.json();
         if (data.success && data.data?.mockTest) {
+          await loadData();
           router.push(localizePath(`/candidate/mock-tests/${data.data.mockTest.id}`, locale));
+        } else {
+          setStartError(data.error?.message || "Failed to generate full pattern mock test.");
+        }
+      } catch (err) {
+        console.error("Full mock generation error:", err);
+        setStartError("Network error while generating full pattern mock test.");
+      }
+    }, t("common.loading", "Generating 100% blueprint-accurate full mock test with exact question count..."));
+  };
+
+  // Generate Topic-Specific Practice Drill
+  const handleGenerateTopicMock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedVersionId || !selectedTopicId) return;
+    setStartError(null);
+
+    await withLoading(async () => {
+      try {
+        const res = await fetch("/api/candidate/mock-tests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "TOPIC_PRACTICE",
+            examVersionId: selectedVersionId,
+            topicId: selectedTopicId,
+            questionCount: topicQCount,
+            difficulty: topicDifficulty,
+            language: topicLanguage,
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success && data.data?.mockTest) {
+          await loadData();
+          router.push(localizePath(`/candidate/mock-tests/${data.data.mockTest.id}`, locale));
+        } else {
+          setStartError(data.error?.message || "Failed to generate topic practice drill.");
         }
       } catch {
-        console.error("Failed to generate topic mock");
+        setStartError("Network error while generating topic practice drill.");
       }
-    }, t("common.loading", "Generating topic practice drill..."));
+    }, t("common.loading", "Generating topic practice drill strictly bounded by verified syllabus..."));
   };
+
+  // Filtered Catalog
+  const filteredMocks = useMemo(() => {
+    return mocks.filter((m) => {
+      if (filterType === "FULL_MOCK" && m.type !== "FULL_MOCK") return false;
+      if (filterType === "TOPIC_PRACTICE" && m.type !== "TOPIC_PRACTICE") return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchCode = m.code?.toLowerCase().includes(q);
+        const matchTitle = m.title.toLowerCase().includes(q);
+        const matchExam = m.examVersion.exam.name.toLowerCase().includes(q);
+        if (!matchCode && !matchTitle && !matchExam) return false;
+      }
+      return true;
+    });
+  }, [mocks, filterType, searchQuery]);
 
   return (
     <div className="space-y-8">
@@ -210,11 +295,14 @@ export default function CandidateMockTestsPage() {
             {t("home.badge", "100% Pattern-Verified Mock Testing Engine")}
           </span>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
           {t("navigation.mockTests", "Mock Tests")} & {t("navigation.practice", "Practice Drills")}
         </h1>
-        <p className="text-sm text-slate-600 mt-1 max-w-3xl">
-          {t("candidateDashboard.subheading", "Prepare with full-pattern mocks strictly adhering to locked official exam blueprints and syllabus topics.")}
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-3xl">
+          {t(
+            "candidateDashboard.subheading",
+            "Prepare with full-pattern mocks strictly adhering to locked official blueprints with exact question counts, or generate topic-specific drills bounded by the verified syllabus."
+          )}
         </p>
       </div>
 
@@ -237,27 +325,27 @@ export default function CandidateMockTestsPage() {
       )}
 
       {/* Mode Selector & Quick Simulator Card */}
-      <Card className="shadow-sm border-blue-200 bg-gradient-to-br from-blue-50/60 to-indigo-50/60">
+      <Card className="shadow-sm border-blue-200 dark:border-blue-900 bg-gradient-to-br from-blue-50/70 via-indigo-50/50 to-white dark:from-slate-900 dark:to-slate-800">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-blue-600" />
+              <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               <CardTitle className="text-lg font-bold">
                 {examMode === "FULL_EXAM"
-                  ? "Full Examination Mode (Official Pattern)"
+                  ? "Full Examination Mode (100% Blueprint Accurate)"
                   : "Targeted Topic Practice Drill"}
               </CardTitle>
             </div>
 
             {/* Examination Mode Switcher */}
-            <div className="inline-flex rounded-lg bg-white p-1 border border-slate-200 shadow-xs text-xs font-bold">
+            <div className="inline-flex rounded-lg bg-white dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700 shadow-xs text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setExamMode("FULL_EXAM")}
                 className={`px-3 py-1.5 rounded-md transition-all ${
                   examMode === "FULL_EXAM"
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 Full Examination
@@ -268,7 +356,7 @@ export default function CandidateMockTestsPage() {
                 className={`px-3 py-1.5 rounded-md transition-all ${
                   examMode === "TOPIC_DRILL"
                     ? "bg-blue-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 Topic Practice Drill
@@ -278,151 +366,259 @@ export default function CandidateMockTestsPage() {
 
           <CardDescription className="text-xs mt-1">
             {examMode === "FULL_EXAM"
-              ? "Takes a complete official-pattern simulation with exact section distribution, negative marking, and timer."
-              : "Generate an instant practice drill on a single verified syllabus topic."}
+              ? "Takes or generates a complete official-pattern simulation with exact section distribution, question quota, negative marking, and duration."
+              : "Generate a custom practice drill on a single verified syllabus topic with your chosen question count and difficulty."}
           </CardDescription>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="space-y-4">
           {examMode === "FULL_EXAM" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Target Exam
-                </label>
-                <select
-                  value={selectedExamId}
-                  onChange={(e) => {
-                    setSelectedExamId(e.target.value);
-                    const ex = exams.find((x) => x.id === e.target.value);
-                    if (ex?.versions?.length) {
-                      setSelectedVersionId(ex.versions[0].id);
-                    }
-                  }}
-                  className="w-full h-11 px-3 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 font-semibold"
-                >
-                  {exams.map((ex) => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Target Exam
+                  </label>
+                  <select
+                    value={selectedExamId}
+                    onChange={(e) => {
+                      setSelectedExamId(e.target.value);
+                      const ex = exams.find((x) => x.id === e.target.value);
+                      if (ex?.versions?.length) {
+                        setSelectedVersionId(ex.versions[0].id);
+                      }
+                    }}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    {exams.map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Exam Cycle / Version
+                  </label>
+                  <select
+                    value={selectedVersionId}
+                    onChange={(e) => setSelectedVersionId(e.target.value)}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    {currentExam?.versions?.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.versionName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Exam Cycle / Version
-                </label>
-                <select
-                  value={selectedVersionId}
-                  onChange={(e) => setSelectedVersionId(e.target.value)}
-                  className="w-full h-11 px-3 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 font-semibold"
-                >
-                  {currentExam?.versions?.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.versionName}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Authoritative Blueprint Information Card */}
+              {currentBlueprint && (
+                <div className="p-3.5 bg-white/90 dark:bg-slate-900/90 rounded-xl border border-blue-200 dark:border-blue-900/60 shadow-xs space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="success" className="text-[11px] gap-1 font-bold">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> 100% Blueprint Verified
+                      </Badge>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-xs sm:max-w-md">
+                        {currentBlueprint.title || "Official Examination Blueprint"}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                      Target: {currentBlueprint.totalQuestions} Qs • {currentBlueprint.durationMinutes}m •{" "}
+                      {currentBlueprint.totalMarks ? Number(currentBlueprint.totalMarks) : currentBlueprint.totalQuestions}{" "}
+                      Marks • Neg: -{currentBlueprint.negativeMarkingRate ? Number(currentBlueprint.negativeMarkingRate) : 0.25}
+                    </span>
+                  </div>
 
-              <div className="flex items-end">
+                  {currentBlueprint.sections && currentBlueprint.sections.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-xs">
+                      {currentBlueprint.sections.map((sec) => (
+                        <div
+                          key={sec.id}
+                          className="p-2 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700"
+                        >
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
+                            Section {sec.sectionOrder}: {sec.name}
+                          </span>
+                          <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                            {sec.questionCount} Questions
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
                 <Button
+                  type="button"
+                  onClick={handleGenerateFullMock}
+                  disabled={!selectedVersionId}
+                  className="h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold gap-2 shadow-sm text-xs sm:text-sm flex-1 min-h-[44px]"
+                >
+                  <Sparkles className="h-4 w-4 shrink-0" /> Generate New Full Mock Test ({currentBlueprint?.totalQuestions || 100} Qs)
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => {
-                    const matchingMock = mocks.find(
-                      (m) => m.type === "FULL_MOCK" && m.examVersion.versionName === currentVersion?.versionName
-                    ) || mocks[0];
+                    const matchingMock =
+                      mocks.find(
+                        (m) => m.type === "FULL_MOCK" && m.examVersion.versionName === currentVersion?.versionName
+                      ) ||
+                      mocks.find((m) => m.type === "FULL_MOCK") ||
+                      mocks[0];
                     if (matchingMock) {
                       handleStartExam(matchingMock.id);
                     }
                   }}
-                  disabled={mocks.length === 0}
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 font-bold gap-1.5 shadow-sm text-sm"
+                  disabled={mocks.filter((m) => m.type === "FULL_MOCK").length === 0}
+                  className="h-11 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-800 font-bold gap-1.5 shadow-xs text-xs sm:text-sm flex-1 min-h-[44px]"
                 >
-                  <Play className="h-4 w-4" /> Start Full Examination
+                  <Play className="h-4 w-4 shrink-0" /> Start Existing Verified Mock
                 </Button>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleGenerateTopicMock} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Exam
-                </label>
-                <select
-                  value={selectedExamId}
-                  onChange={(e) => {
-                    setSelectedExamId(e.target.value);
-                    const ex = exams.find((x) => x.id === e.target.value);
-                    if (ex?.versions?.length) {
-                      setSelectedVersionId(ex.versions[0].id);
-                      const firstTop = ex.versions[0].syllabi?.[0]?.sections?.[0]?.topics?.[0];
-                      if (firstTop) setSelectedTopicId(firstTop.id);
-                    }
-                  }}
-                  className="w-full h-11 px-3 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:ring-2 focus:ring-blue-500"
-                >
-                  {exams.map((ex) => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.name}
-                    </option>
-                  ))}
-                </select>
+            <form onSubmit={handleGenerateTopicMock} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Exam */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Target Exam
+                  </label>
+                  <select
+                    value={selectedExamId}
+                    onChange={(e) => {
+                      setSelectedExamId(e.target.value);
+                      const ex = exams.find((x) => x.id === e.target.value);
+                      if (ex?.versions?.length) {
+                        setSelectedVersionId(ex.versions[0].id);
+                        const firstTop = ex.versions[0].syllabi?.[0]?.sections?.[0]?.topics?.[0];
+                        if (firstTop) setSelectedTopicId(firstTop.id);
+                      }
+                    }}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    {exams.map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Exam Cycle */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Exam Version
+                  </label>
+                  <select
+                    value={selectedVersionId}
+                    onChange={(e) => setSelectedVersionId(e.target.value)}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    {currentExam?.versions?.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.versionName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Verified Syllabus Topic */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Verified Syllabus Topic (100% Accurate)
+                  </label>
+                  <select
+                    value={selectedTopicId}
+                    onChange={(e) => setSelectedTopicId(e.target.value)}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-medium"
+                    required
+                  >
+                    {syllabusSections.map((sec) => (
+                      <optgroup key={sec.id} label={sec.name}>
+                        {sec.topics.map((tItem) => (
+                          <option key={tItem.id} value={tItem.id}>
+                            {tItem.code ? `[${tItem.code}] ` : ""}
+                            {tItem.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Verified Syllabus Topic
-                </label>
-                <select
-                  value={selectedTopicId}
-                  onChange={(e) => setSelectedTopicId(e.target.value)}
-                  className="w-full h-11 px-3 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  {topicsList.map((tItem) => (
-                    <option key={tItem.id} value={tItem.id}>
-                      {tItem.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Questions & Difficulty
-                </label>
-                <div className="flex gap-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                {/* Question Count */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Exact Questions Count
+                  </label>
                   <select
                     value={topicQCount}
                     onChange={(e) => setTopicQCount(parseInt(e.target.value, 10))}
-                    className="w-1/2 h-11 px-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-semibold"
                   >
-                    <option value={10}>10 Qs</option>
-                    <option value={20}>20 Qs</option>
-                    <option value={30}>30 Qs</option>
-                    <option value={50}>50 Qs</option>
+                    <option value={10}>10 Questions</option>
+                    <option value={15}>15 Questions</option>
+                    <option value={20}>20 Questions</option>
+                    <option value={30}>30 Questions</option>
+                    <option value={50}>50 Questions</option>
                   </select>
+                </div>
+
+                {/* Difficulty */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Target Difficulty
+                  </label>
                   <select
                     aria-label="Target Difficulty"
                     value={topicDifficulty}
                     onChange={(e) => setTopicDifficulty(e.target.value as "EASY" | "MEDIUM" | "HARD")}
-                    className="w-1/2 h-11 px-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-semibold"
                   >
                     <option value="EASY">Easy</option>
                     <option value="MEDIUM">Medium</option>
                     <option value="HARD">Hard</option>
                   </select>
                 </div>
-              </div>
 
-              <div className="flex items-end">
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 font-bold gap-1.5 shadow-sm"
-                >
-                  <Zap className="h-4 w-4" /> Start Drill
-                </Button>
+                {/* Language */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Language
+                  </label>
+                  <select
+                    value={topicLanguage}
+                    onChange={(e) => setTopicLanguage(e.target.value)}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    <option value="English">English</option>
+                    <option value="Hindi">Hindi</option>
+                  </select>
+                </div>
+
+                {/* Submit */}
+                <div className="flex items-end">
+                  <Button
+                    type="submit"
+                    className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold gap-2 shadow-sm text-xs sm:text-sm min-h-[44px]"
+                  >
+                    <Zap className="h-4 w-4" /> Generate Drill ({topicQCount} Qs)
+                  </Button>
+                </div>
               </div>
             </form>
           )}
@@ -431,34 +627,79 @@ export default function CandidateMockTestsPage() {
 
       {/* Available Verified Mock Tests Catalog */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900">
-            {t("candidateDashboard.availableExams", "Available Target Exams")}
-          </h2>
-          <span className="text-xs text-slate-500 font-semibold">
-            {mocks.length} Mock Tests Available
-          </span>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              {t("candidateDashboard.availableExams", "Available Target Exams")}
+            </h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+              Showing {filteredMocks.length} of {mocks.length} Mock Tests
+            </span>
+          </div>
+
+          {/* Filters & Search */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setFilterType("ALL")}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  filterType === "ALL" ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs" : "text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                All ({mocks.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType("FULL_MOCK")}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  filterType === "FULL_MOCK" ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs" : "text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                Full Mocks ({mocks.filter((m) => m.type === "FULL_MOCK").length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType("TOPIC_PRACTICE")}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  filterType === "TOPIC_PRACTICE" ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs" : "text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                Topic Drills ({mocks.filter((m) => m.type === "TOPIC_PRACTICE").length})
+              </button>
+            </div>
+
+            <div className="relative w-44 sm:w-56">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search mock tests..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
+          </div>
         </div>
 
         {isLoading ? (
           <div className="p-12 text-center text-slate-500 text-sm font-semibold">
             {t("common.loading", "Loading mock tests...")}
           </div>
-        ) : mocks.length === 0 ? (
+        ) : filteredMocks.length === 0 ? (
           <Card className="shadow-sm">
             <CardContent className="flex flex-col items-center justify-center p-12 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 mb-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 mb-4">
                 <FileCheck className="h-7 w-7" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900">No Full Mocks Available Yet</h3>
-              <p className="text-sm text-slate-500 mt-1 max-w-sm">
-                Use the custom Topic Practice Generator above to take targeted practice drills.
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">No Matching Mock Tests</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
+                Use the generator controls above to create a fresh 100% syllabus-accurate mock test or topic drill.
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {mocks.map((mock) => {
+            {filteredMocks.map((mock) => {
               const stats = mock.userStats;
               const hasActiveAttempt = Boolean(stats?.inProgressAttemptId);
               const hasCompletedAttempt = Boolean(stats && stats.totalAttempts > 0);
@@ -467,7 +708,7 @@ export default function CandidateMockTestsPage() {
               return (
                 <Card
                   key={mock.id}
-                  className="shadow-sm hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between"
+                  className="shadow-sm hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-md transition-all flex flex-col justify-between"
                 >
                   <CardHeader className="pb-3 space-y-2.5">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -479,7 +720,7 @@ export default function CandidateMockTestsPage() {
                           {mock.type === "FULL_MOCK" ? "Full Examination" : "Topic Drill"}
                         </Badge>
                         {stats && stats.totalAttempts > 0 && (
-                          <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
                             Attempt {stats.totalAttempts}/{stats.maxAttempts}
                           </span>
                         )}
@@ -487,45 +728,47 @@ export default function CandidateMockTestsPage() {
                     </div>
 
                     <div>
-                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 line-clamp-1">
+                      <CardTitle className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 line-clamp-1">
                         {mock.title}
                       </CardTitle>
-                      <p className="text-xs text-slate-500 mt-0.5">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {mock.examVersion.exam.name} • {mock.examVersion.versionName}
                       </p>
                     </div>
 
                     {/* Metadata Matrix */}
-                    <div className="mt-2 grid grid-cols-3 gap-2 p-2.5 bg-blue-50/40 rounded-lg border border-blue-100 text-center text-xs">
+                    <div className="mt-2 grid grid-cols-3 gap-2 p-2.5 bg-blue-50/40 dark:bg-slate-800/40 rounded-lg border border-blue-100 dark:border-slate-800 text-center text-xs">
                       <div>
                         <span className="block text-slate-400 text-[10px]">{t("mock.questions", "Questions")}</span>
-                        <strong className="text-slate-900 font-bold">{mock.totalQuestions}</strong>
+                        <strong className="text-slate-900 dark:text-slate-100 font-bold">{mock.totalQuestions}</strong>
                       </div>
                       <div>
                         <span className="block text-slate-400 text-[10px]">{t("mock.totalMarks", "Total Marks")}</span>
-                        <strong className="text-slate-900 font-bold">{mock.totalMarks.toString()}</strong>
+                        <strong className="text-slate-900 dark:text-slate-100 font-bold">{mock.totalMarks.toString()}</strong>
                       </div>
                       <div>
                         <span className="block text-slate-400 text-[10px]">{t("mock.minutes", "Duration")}</span>
-                        <strong className="text-slate-900 font-bold">{mock.durationMinutes}m</strong>
+                        <strong className="text-slate-900 dark:text-slate-100 font-bold">{mock.durationMinutes}m</strong>
                       </div>
                     </div>
 
                     {/* Performance Summary if attempted */}
                     {stats && stats.bestScore !== null && (
-                      <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
-                        <div className="flex items-center gap-1 text-emerald-800 font-semibold">
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs">
+                        <div className="flex items-center gap-1 text-emerald-800 dark:text-emerald-300 font-semibold">
                           <Award className="h-3.5 w-3.5" /> Best Score: {stats.bestScore.toFixed(0)}%
                         </div>
                         {stats.latestScore !== null && (
-                          <span className="text-[11px] text-emerald-700">Latest: {stats.latestScore.toFixed(0)}%</span>
+                          <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                            Latest: {stats.latestScore.toFixed(0)}%
+                          </span>
                         )}
                       </div>
                     )}
                   </CardHeader>
 
                   <CardContent className="pt-0 pb-4 space-y-2">
-                    <div className="border-t border-slate-100 pt-3 flex flex-col gap-2">
+                    <div className="border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-col gap-2">
                       {hasActiveAttempt ? (
                         <Button
                           onClick={() => handleStartExam(mock.id)}
@@ -547,7 +790,7 @@ export default function CandidateMockTestsPage() {
                           <Button
                             onClick={() => handleRetakeExam(mock.id)}
                             disabled={!canRetake}
-                            className="w-full font-semibold min-h-[44px] text-xs gap-1 bg-blue-600 hover:bg-blue-700"
+                            className="w-full font-semibold min-h-[44px] text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
                           >
                             <RotateCcw className="h-3.5 w-3.5" /> Retake Exam
                           </Button>
@@ -555,7 +798,7 @@ export default function CandidateMockTestsPage() {
                       ) : (
                         <Button
                           onClick={() => handleStartExam(mock.id)}
-                          className="w-full font-bold min-h-[44px] gap-1.5 bg-blue-600 hover:bg-blue-700"
+                          className="w-full font-bold min-h-[44px] gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           <Play className="h-4 w-4" /> {t("mock.startTest", "Start Test")}
                         </Button>
@@ -565,7 +808,7 @@ export default function CandidateMockTestsPage() {
                         href={localizePath(`/candidate/mock-tests/${mock.id}`, locale)}
                         variant="ghost"
                         size="sm"
-                        className="w-full text-xs text-slate-500 hover:text-slate-800"
+                        className="w-full text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
                       >
                         View Structure & Blueprint <ArrowRight className="h-3 w-3 ml-1" />
                       </Button>

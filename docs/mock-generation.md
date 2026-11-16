@@ -35,6 +35,28 @@ In Phase 8, the platform introduces **One-Click Actual-Pattern Mock Generation**
 
 ---
 
+## Candidate-Initiated Mock & Topic Drill Generation
+
+In addition to pre-published administrative mock tests, registered candidates can generate on-demand examination simulations directly from their portal (`/candidate/mock-tests`):
+
+1. **Full-Pattern Blueprint Mocks (100% Pattern & Syllabus Accurate)**:
+   - Candidates select any active Exam and Cycle/Version (e.g. Supreme Court TAP Stage 1, Stage 2, or UP Health Officer).
+   - Generates a new, full-pattern mock test strictly matching the locked blueprint:
+     - Exact total question count (e.g., 100 Qs for Stage 1, 50 Qs for Stage 2, 100 Qs for UPHO).
+     - Section-by-section distribution (e.g. Stage 1: 50 English, 20 Reasoning, 20 Quant, 10 GK; Stage 2: 15 DSA, 15 DBMS, 10 Networks, 10 OS; UPHO: 80 Clinical Domain, 20 General Aptitude).
+     - Exact duration (90m or 120m), marks (100 or 50), and negative marking rate (0.25).
+     - 100% Syllabus alignment with zero duplicate questions.
+   - Automatically verified by `MockPatternValidatorService.validate()` prior to candidate attempt.
+
+2. **Targeted Topic Practice Drills**:
+   - Candidates choose a specific verified syllabus topic (e.g., "Data Structures & Algorithms", "English Grammar & Usage", "Community Health Nursing").
+   - Candidates specify the exact number of questions (10, 15, 20, 30, or 50 questions), target difficulty (`EASY`, `MEDIUM`, `HARD`), and language.
+   - Bounded strictly by `AIScopeGuard` and verified syllabus nodes; candidates cannot generate arbitrary unverified topics.
+   - Assembles questions from existing approved items in the Question Bank and supplements with Gemini AI if additional items are needed.
+   - Attaches validation records and makes the drill immediately playable.
+
+---
+
 ## Snapshot Stability Rule
 
 Once a mock test is generated, its questions, sections, marks, and negative deduction rules are frozen in `MockTest`, `MockTestSection`, and `MockTestQuestion`. Historical mock tests do not mutate if future exam blueprints change.

@@ -81,6 +81,7 @@ export class ExamService {
             include: {
               blueprints: {
                 where: { status: { in: ["LOCKED", "ACTIVE", "VERIFIED"] } },
+                include: { sections: { orderBy: { sectionOrder: "asc" } } },
                 take: 1,
               },
               syllabi: {
