@@ -2,65 +2,50 @@
 // ExamPattern AI — Passenger Startup Wrapper
 // ==========================================
 // This file serves as the entry point for Phusion Passenger in cPanel.
-// It initializes and boots the Next.js production server.
+// It initializes and boots the Next.js production server with resource limits.
 /* eslint-disable @typescript-eslint/no-require-imports */
+
+// Limit threadpool size to prevent hitting CloudLinux NPROC / pthread limits
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || "2";
+process.env.PRISMA_CLIENT_ENGINE_TYPE = process.env.PRISMA_CLIENT_ENGINE_TYPE || "library";
 
 const fs = require("fs");
 const path = require("path");
 
-// Load .env from application root if present
-const rootEnvPath = path.join(__dirname, ".env");
-if (fs.existsSync(rootEnvPath)) {
+// 1. Manually parse .env without external dependencies
+const envFile = path.join(__dirname, ".env");
+if (fs.existsSync(envFile)) {
   try {
-    const dotenv = require("dotenv");
-    dotenv.config({ path: rootEnvPath });
-  } catch {
-    // If dotenv module is not in global scope, environment variables are already in process.env
+    const lines = fs.readFileSync(envFile, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading .env:", e);
   }
 }
 
-const standaloneServerPath = path.join(__dirname, ".next", "standalone", "server.js");
+// 2. Set production environment
+process.env.NODE_ENV = "production";
 
-if (fs.existsSync(standaloneServerPath)) {
-  // Execute Next.js standalone production server
-  require(standaloneServerPath);
+// 3. Locate standalone server
+const standaloneServer = path.join(__dirname, ".next", "standalone", "server.js");
+
+if (fs.existsSync(standaloneServer)) {
+  require(standaloneServer);
 } else {
-  const next = require("next");
-  const http = require("http");
-
-  const port = parseInt(process.env.PORT || "3000", 10);
-  const hostname = process.env.HOSTNAME || "127.0.0.1";
-
-  const app = next({
-    dev: false,
-    hostname,
-    port,
-  });
-
-    const handle = app.getRequestHandler();
-
-    app
-      .prepare()
-      .then(() => {
-        const server = http.createServer(async (req, res) => {
-          try {
-            await handle(req, res);
-          } catch (error) {
-            console.error("Next.js request error:", error);
-
-            if (!res.headersSent) {
-              res.statusCode = 500;
-              res.end("Internal Server Error");
-            }
-          }
-        });
-
-        server.listen(port, hostname, () => {
-          console.log(`> ExamPattern AI Next.js running on http://${hostname}:${port}`);
-        });
-      })
-      .catch((err) => {
-        console.error("Failed to start ExamPattern AI server:", err);
-        process.exit(1);
-      });
-  }
+  console.error("Critical Error: standalone server.js not found at " + standaloneServer);
+  process.exit(1);
+}
